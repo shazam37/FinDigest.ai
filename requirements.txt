@@ -1,0 +1,17 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+apscheduler==3.10.4
+pydantic-settings==2.6.1
+pytz==2024.2
+
+# LLM
+groq==1.2.0
+
+# Search
+tavily-python==0.5.0
+
+# Google APIs
+google-auth==2.36.0
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+google-api-python-client==2.154.0
