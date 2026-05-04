@@ -1,8 +1,8 @@
-# 🏦 FinTech Intelligence Agent
+# FinTech Intelligence Agent
 
 An AI-powered intelligence agent designed to deliver high-signal, executive-ready briefings on the fintech industry. This agent acts as a digital "Chief of Staff," monitoring news across banks and asset management companies to provide concise, strategic insights without the noise of general market news.
 
-## 🚀 Key Features
+## Key Features
 
 * **Agentic Search:** Utilizes **Tavily AI** to perform deep, multi-query searches specifically targeted at fintech innovation, regulation, and M&A activity.
 * **Executive Summarization:** Employs **gpt-oss-120B (via Groq)** to transform raw news items into 2-3 sentence strategic synopses focused on the "why" behind the news.
@@ -11,7 +11,7 @@ An AI-powered intelligence agent designed to deliver high-signal, executive-read
 * **Reliability & Audit Trails:** Automatically creates **Google Calendar** events to serve as an audit trail for successful briefing delivery.
 * **Interactive Dashboard:** Built with **FastAPI** to provide a web interface for health checks, manual digest triggers, and live email previews.
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 * **Framework:** [FastAPI](https://fastapi.tiangolo.com/) (Asynchronous Python)
 * **Search Engine:** [Tavily AI](https://tavily.com/) (Optimized for LLM RAG)
@@ -19,7 +19,7 @@ An AI-powered intelligence agent designed to deliver high-signal, executive-read
 * **Email/Calendar:** [Google Workspace APIs](https://developers.google.com/gmail/api) (OAuth2)
 * **Scheduler:** [APScheduler](https://apscheduler.readthedocs.io/)
 
-## 📋 Quick Start
+## Quick Start
 
 ### 1. Prerequisites
 * Python 3.10+
@@ -51,13 +51,13 @@ USER_TIMEZONE=Asia/Kolkata
 
 ---
 
-### 🛡️ Error Handling & Reliability
+### Error Handling & Reliability
 * **Fallback Logic:** If the LLM reasoning fails, the agent reverts to raw snippets to ensure a briefing is still delivered.
 * **Misfire Grace:** The `misfire_grace_time` setting ensures that if the server is offline at 9:00 AM, the briefing triggers immediately upon reconnection.
 * **State Tracking:** Maintains an in-memory `agent_state` to monitor run history and successful story counts.
 
 ---
 
-### 📈 Future Roadmap
+### Future Roadmap
 * **Deduplication:** Integration of a Vector Database (e.g., Pinecone) to ensure stories aren't repeated day-over-day.
 * **Personalization:** Adding "Like/Dislike" feedback loops to allow the agent to learn the executive’s preferences over time.
