@@ -19,7 +19,7 @@ RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTr
 COPY . .
 
 # Create credentials directory (populated via env vars in production)
-RUN mkdir -p credentials
+# RUN mkdir -p credentials
 
 EXPOSE 8000
 

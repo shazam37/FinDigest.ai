@@ -38,6 +38,7 @@ class DigestState(TypedDict):
 
     # === Stage 1: news_agent ===
     raw_stories: list[dict]       # All stories returned by Tavily
+    watchlist_stories: list[dict] # Stories matched from user watchlists (Phase 2)
 
     # === Stage 2: memory_agent ===
     novel_stories: list[dict]     # After semantic deduplication
@@ -45,6 +46,11 @@ class DigestState(TypedDict):
     # === Stage 3: curator_agent ===
     curated_stories: list[dict]   # LLM-ranked and summarised
     email_subject: str            # LLM-generated subject line
+
+    # === Phase 2: Personalisation context ===
+    # Loaded before curation, injected into the LLM prompt
+    user_id: int                  # Default user (or per-user in multi-user runs)
+    preference_profile: dict      # Loaded from user_preferences table
 
     # === Stage 4: builder_agent ===
     email_html: str               # Final rendered HTML

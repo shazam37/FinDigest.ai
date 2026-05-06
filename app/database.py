@@ -204,3 +204,306 @@ async def fetch_run_by_id(run_id: str) -> dict | None:
 
         cols = [d.name for d in result.description]
         return dict(zip(cols, row))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 2 schema additions
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def create_phase2_schema():
+    """
+    Idempotent Phase 2 table creation. Called from create_schema() on startup.
+
+    New tables:
+      - users              : multi-user support with role-based topic preferences
+      - story_feedback     : thumbs up/down signals per story per user
+      - user_preferences   : materialised preference profile (rebuilt from feedback)
+      - watchlist_entities : per-user entity/topic watch targets
+      - entity_sentiment   : rolling sentiment scores per watched entity
+    """
+    async with get_conn() as conn:
+
+        # ── Users ──────────────────────────────────────────────────────────────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id           SERIAL PRIMARY KEY,
+                email        TEXT UNIQUE NOT NULL,
+                name         TEXT,
+                role         TEXT DEFAULT 'executive',
+                -- role drives default topic weights:
+                -- 'executive'    → balanced across all topics
+                -- 'risk_officer' → compliance, fraud, regulation weighted higher
+                -- 'product_lead' → innovation, API, product launches weighted higher
+                -- 'investor'     → M&A, funding, market entry weighted higher
+                timezone     TEXT DEFAULT 'Asia/Kolkata',
+                active       BOOLEAN DEFAULT TRUE,
+                created_at   TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+        # ── Story feedback ─────────────────────────────────────────────────────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS story_feedback (
+                id           SERIAL PRIMARY KEY,
+                user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                story_url    TEXT NOT NULL,
+                story_title  TEXT NOT NULL,
+                story_source TEXT,
+                -- Topics extracted from the story (comma-separated)
+                topics       TEXT,
+                signal       SMALLINT NOT NULL CHECK (signal IN (1, -1)),
+                -- 1 = thumbs up, -1 = thumbs down
+                digest_run_id TEXT,
+                created_at   TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(user_id, story_url)
+            )
+        """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS story_feedback_user_idx
+            ON story_feedback (user_id, created_at DESC)
+        """)
+
+        # ── User preference profiles ───────────────────────────────────────────
+        # Materialised view of what each user likes — rebuilt after each feedback signal
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_preferences (
+                id              SERIAL PRIMARY KEY,
+                user_id         INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                -- JSON blob: {"liked_topics": [...], "disliked_topics": [...],
+                --             "liked_sources": [...], "disliked_sources": [...],
+                --             "profile_summary": "plain text for LLM injection"}
+                profile_json    JSONB NOT NULL DEFAULT '{}',
+                feedback_count  INTEGER DEFAULT 0,
+                last_updated    TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+        # ── Watchlist entities ─────────────────────────────────────────────────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS watchlist_entities (
+                id           SERIAL PRIMARY KEY,
+                user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                entity       TEXT NOT NULL,
+                -- entity type: 'company' | 'regulator' | 'topic' | 'person'
+                entity_type  TEXT DEFAULT 'company',
+                active       BOOLEAN DEFAULT TRUE,
+                created_at   TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(user_id, entity)
+            )
+        """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS watchlist_user_idx
+            ON watchlist_entities (user_id) WHERE active = TRUE
+        """)
+
+        # ── Entity sentiment history ───────────────────────────────────────────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS entity_sentiment (
+                id           SERIAL PRIMARY KEY,
+                entity       TEXT NOT NULL,
+                -- Sentiment score: -1.0 (very negative) → +1.0 (very positive)
+                score        FLOAT NOT NULL,
+                story_url    TEXT,
+                story_title  TEXT,
+                scored_at    TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS entity_sentiment_entity_idx
+            ON entity_sentiment (entity, scored_at DESC)
+        """)
+
+        await conn.commit()
+        logger.info("Phase 2 database schema ready")
+
+
+# ── User helpers ───────────────────────────────────────────────────────────────
+
+async def get_or_create_default_user() -> int:
+    """
+    Ensure the default user (settings.RECIPIENT_EMAIL) exists.
+    Returns the user_id. Called at startup so the system works
+    single-user out of the box.
+    """
+    from app.config import settings
+    async with get_conn() as conn:
+        row = await (await conn.execute(
+            "SELECT id FROM users WHERE email = %s", (settings.RECIPIENT_EMAIL,)
+        )).fetchone()
+        if row:
+            return row[0]
+        row = await (await conn.execute(
+            "INSERT INTO users (email, name) VALUES (%s, %s) RETURNING id",
+            (settings.RECIPIENT_EMAIL, "Default User"),
+        )).fetchone()
+        await conn.commit()
+        return row[0]
+
+
+async def fetch_all_active_users() -> list[dict]:
+    """Return all active users for multi-user digest dispatch."""
+    async with get_conn() as conn:
+        rows = await (await conn.execute(
+            "SELECT id, email, name, role, timezone FROM users WHERE active = TRUE"
+        )).fetchall()
+        return [
+            {"id": r[0], "email": r[1], "name": r[2], "role": r[3], "timezone": r[4]}
+            for r in rows
+        ]
+
+
+# ── Feedback helpers ───────────────────────────────────────────────────────────
+
+async def record_feedback(
+    user_id: int,
+    story_url: str,
+    story_title: str,
+    story_source: str,
+    signal: int,
+    topics: str = "",
+    digest_run_id: str = "",
+):
+    """Record a thumbs up (1) or thumbs down (-1) signal."""
+    async with get_conn() as conn:
+        await conn.execute(
+            """
+            INSERT INTO story_feedback
+                (user_id, story_url, story_title, story_source, topics, signal, digest_run_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, story_url) DO UPDATE SET
+                signal     = EXCLUDED.signal,
+                created_at = NOW()
+            """,
+            (user_id, story_url, story_title, story_source, topics, signal, digest_run_id),
+        )
+        await conn.commit()
+
+
+async def fetch_recent_feedback(user_id: int, limit: int = 50) -> list[dict]:
+    """Fetch the most recent feedback signals for preference profile building."""
+    async with get_conn() as conn:
+        rows = await (await conn.execute(
+            """
+            SELECT story_url, story_title, story_source, topics, signal, created_at
+            FROM story_feedback
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (user_id, limit),
+        )).fetchall()
+        return [
+            {
+                "url": r[0], "title": r[1], "source": r[2],
+                "topics": r[3], "signal": r[4], "created_at": r[5],
+            }
+            for r in rows
+        ]
+
+
+async def upsert_preference_profile(user_id: int, profile: dict, feedback_count: int):
+    """Save the computed preference profile JSON for a user."""
+    import json
+    async with get_conn() as conn:
+        await conn.execute(
+            """
+            INSERT INTO user_preferences (user_id, profile_json, feedback_count, last_updated)
+            VALUES (%s, %s, %s, NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                profile_json   = EXCLUDED.profile_json,
+                feedback_count = EXCLUDED.feedback_count,
+                last_updated   = NOW()
+            """,
+            (user_id, json.dumps(profile), feedback_count),
+        )
+        await conn.commit()
+
+
+async def fetch_preference_profile(user_id: int) -> dict | None:
+    """Load the stored preference profile for LLM injection. Returns None if insufficient data."""
+    import json
+    from app.config import settings
+    async with get_conn() as conn:
+        row = await (await conn.execute(
+            "SELECT profile_json, feedback_count FROM user_preferences WHERE user_id = %s",
+            (user_id,),
+        )).fetchone()
+        if not row:
+            return None
+        if row[1] < settings.MIN_FEEDBACK_FOR_PROFILE:
+            return None   # Not enough signals yet
+        return json.loads(row[0])
+
+
+# ── Watchlist helpers ──────────────────────────────────────────────────────────
+
+async def fetch_watchlist(user_id: int) -> list[dict]:
+    """Return active watchlist entities for a user."""
+    async with get_conn() as conn:
+        rows = await (await conn.execute(
+            """
+            SELECT id, entity, entity_type, created_at
+            FROM watchlist_entities
+            WHERE user_id = %s AND active = TRUE
+            ORDER BY entity
+            """,
+            (user_id,),
+        )).fetchall()
+        return [
+            {"id": r[0], "entity": r[1], "entity_type": r[2], "created_at": r[3]}
+            for r in rows
+        ]
+
+
+async def add_watchlist_entity(user_id: int, entity: str, entity_type: str = "company") -> int:
+    async with get_conn() as conn:
+        row = await (await conn.execute(
+            """
+            INSERT INTO watchlist_entities (user_id, entity, entity_type)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id, entity) DO UPDATE SET active = TRUE
+            RETURNING id
+            """,
+            (user_id, entity.strip(), entity_type),
+        )).fetchone()
+        await conn.commit()
+        return row[0]
+
+
+async def remove_watchlist_entity(user_id: int, entity_id: int):
+    async with get_conn() as conn:
+        await conn.execute(
+            "UPDATE watchlist_entities SET active = FALSE WHERE id = %s AND user_id = %s",
+            (entity_id, user_id),
+        )
+        await conn.commit()
+
+
+# ── Sentiment helpers ──────────────────────────────────────────────────────────
+
+async def record_sentiment(entity: str, score: float, story_url: str, story_title: str):
+    async with get_conn() as conn:
+        await conn.execute(
+            "INSERT INTO entity_sentiment (entity, score, story_url, story_title) VALUES (%s,%s,%s,%s)",
+            (entity, score, story_url, story_title),
+        )
+        await conn.commit()
+
+
+async def fetch_sentiment_window(entity: str, days: int) -> list[dict]:
+    """Return recent sentiment scores for an entity."""
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    async with get_conn() as conn:
+        rows = await (await conn.execute(
+            """
+            SELECT score, story_title, scored_at
+            FROM entity_sentiment
+            WHERE entity = %s AND scored_at >= %s
+            ORDER BY scored_at DESC
+            """,
+            (entity, cutoff),
+        )).fetchall()
+        return [{"score": r[0], "title": r[1], "scored_at": r[2]} for r in rows]

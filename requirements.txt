@@ -2,6 +2,7 @@ fastapi==0.115.5
 uvicorn[standard]==0.32.1
 apscheduler==3.10.4
 pydantic-settings==2.6.1
+pydantic[email]==2.10.4
 pytz==2024.2
 
 # LLM

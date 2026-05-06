@@ -1,25 +1,22 @@
 """
 delivery_agent — Stage 5 of the digest graph.
 
-Two responsibilities:
-  1. Send the HTML email via Gmail API
-  2. Persist the sent stories' embeddings to story_memory so future
-     runs can deduplicate against them
-
-Saving to memory only happens if the email send succeeds — we don't
-want to record stories as "seen" if the user never received them.
+Phase 2 additions:
+  - Passes run_id and user_id to build_email_html (for feedback links)
+  - After successful send, triggers async sentiment scoring for watchlist stories
 """
 
 import logging
-from app.state import DigestState
+from app.graph.state import DigestState
 from app.gmail import send_digest_email
 from app.memory import save_stories_to_memory
+from app.email_builder import build_email_html
 
 logger = logging.getLogger(__name__)
 
 
 async def delivery_agent(state: DigestState) -> dict:
-    """Sends email, then saves sent stories to the memory store."""
+    """Builds final HTML, sends email, saves to memory, triggers sentiment scoring."""
     logger.info(f"[delivery_agent] run_id={state['run_id']}")
 
     if state.get("should_abort"):
@@ -27,17 +24,38 @@ async def delivery_agent(state: DigestState) -> dict:
         return {"email_sent": False}
 
     subject = state.get("email_subject", "FinTech Intelligence Digest")
-    html = state.get("email_html", "")
     curated_stories = state.get("curated_stories", [])
+    run_id = state.get("run_id", "")
+    user_id = state.get("user_id", 1)
 
-    if not html:
+    if not curated_stories:
         return {
             "email_sent": False,
             "should_abort": True,
-            "abort_reason": "No HTML to send — builder_agent may have failed",
+            "abort_reason": "No curated stories to send",
         }
 
-    # --- Send email ---
+    # Build HTML here (Phase 2: needs run_id + user_id for feedback links)
+    try:
+        digest = {
+            "subject": subject,
+            "stories": curated_stories,
+        }
+        html = build_email_html(digest, run_id=run_id, user_id=user_id)
+
+        # Cache for /preview endpoint
+        from app.state import agent_state
+        agent_state["last_email_html"] = html
+    except Exception as e:
+        logger.error(f"[delivery_agent] HTML build failed: {e}", exc_info=True)
+        return {
+            "email_sent": False,
+            "should_abort": True,
+            "abort_reason": f"email build failed: {str(e)[:100]}",
+            "errors": [f"delivery_agent html: {str(e)}"],
+        }
+
+    # Send email
     try:
         sent = send_digest_email(subject, html)
     except Exception as e:
@@ -55,15 +73,17 @@ async def delivery_agent(state: DigestState) -> dict:
 
     logger.info(f"[delivery_agent] Email sent: {subject}")
 
-    # --- Save to memory (non-blocking failure OK) ---
+    # Save to memory (non-blocking failure OK)
     try:
         await save_stories_to_memory(curated_stories)
     except Exception as e:
-        # Don't abort — email already sent, memory is best-effort
         logger.warning(f"[delivery_agent] Memory save failed (non-critical): {e}")
-        return {
-            "email_sent": True,
-            "errors": [f"delivery_agent memory save: {str(e)}"],
-        }
+
+    # Sentiment scoring for watchlist stories (Phase 2, non-blocking)
+    try:
+        from app.watchlist import score_and_track_sentiment
+        await score_and_track_sentiment(curated_stories, user_id)
+    except Exception as e:
+        logger.warning(f"[delivery_agent] Sentiment tracking failed (non-critical): {e}")
 
     return {"email_sent": True}
