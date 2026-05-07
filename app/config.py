@@ -61,6 +61,25 @@ class Settings(BaseSettings):
     # Absolute sentiment score shift that triggers a signal alert
     SENTIMENT_ALERT_DELTA: float = 0.3
 
+
+    # === Phase 3: Slack delivery ===
+    SLACK_BOT_TOKEN: Optional[str] = None        # xoxb-...
+    SLACK_CHANNEL_ID: Optional[str] = None       # C0XXXXXXX
+
+    # === Phase 3: Telegram bot ===
+    TELEGRAM_BOT_TOKEN: Optional[str] = None     # From @BotFather
+    TELEGRAM_CHAT_ID: Optional[str] = None       # Your personal chat ID
+
+    # === Phase 3: LangSmith observability ===
+    LANGSMITH_API_KEY: Optional[str] = None      # From smith.langchain.com
+    LANGSMITH_PROJECT: str = "fintech-agent"
+    # Health report sent every Monday morning
+    HEALTH_REPORT_HOUR: int = 8
+
+    # === Phase 3: Deep-dive research ===
+    RESEARCH_MAX_SEARCHES: int = 15
+    RESEARCH_MAX_STORIES: int = 25
+
     class Config:
         env_file = ".env"
         extra = "ignore"

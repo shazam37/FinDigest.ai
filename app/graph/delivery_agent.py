@@ -1,9 +1,11 @@
 """
 delivery_agent — Stage 5 of the digest graph.
-
-Phase 2 additions:
-  - Passes run_id and user_id to build_email_html (for feedback links)
-  - After successful send, triggers async sentiment scoring for watchlist stories
+Responsibilities:
+    - Build the email HTML using email_builder
+    - Send the email via Gmail API
+    - Fan out to other channels (Slack, Telegram) via channels.py
+    - Save sent stories to memory (for future deduplication)
+    - Score and track sentiment for watchlist entities (Phase 2)    
 """
 
 import logging
@@ -16,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 async def delivery_agent(state: DigestState) -> dict:
-    """Builds final HTML, sends email, saves to memory, triggers sentiment scoring."""
+    """Builds HTML, sends email, fans out to other channels, saves to memory."""
     logger.info(f"[delivery_agent] run_id={state['run_id']}")
 
     if state.get("should_abort"):
@@ -35,15 +37,10 @@ async def delivery_agent(state: DigestState) -> dict:
             "abort_reason": "No curated stories to send",
         }
 
-    # Build HTML here (Phase 2: needs run_id + user_id for feedback links)
+    # Build HTML
     try:
-        digest = {
-            "subject": subject,
-            "stories": curated_stories,
-        }
+        digest = {"subject": subject, "stories": curated_stories}
         html = build_email_html(digest, run_id=run_id, user_id=user_id)
-
-        # Cache for /preview endpoint
         from app.state import agent_state
         agent_state["last_email_html"] = html
     except Exception as e:
@@ -55,7 +52,7 @@ async def delivery_agent(state: DigestState) -> dict:
             "errors": [f"delivery_agent html: {str(e)}"],
         }
 
-    # Send email
+    # Send primary email
     try:
         sent = send_digest_email(subject, html)
     except Exception as e:
@@ -73,13 +70,21 @@ async def delivery_agent(state: DigestState) -> dict:
 
     logger.info(f"[delivery_agent] Email sent: {subject}")
 
-    # Save to memory (non-blocking failure OK)
+    # Phase 3: Multi-channel fan-out (non-blocking)
+    try:
+        from app.delivery.channels import fan_out_digest
+        channel_results = await fan_out_digest(subject, curated_stories)
+        logger.info(f"[delivery_agent] Channel fan-out: {channel_results}")
+    except Exception as e:
+        logger.warning(f"[delivery_agent] Channel fan-out failed (non-critical): {e}")
+
+    # Save to story memory
     try:
         await save_stories_to_memory(curated_stories)
     except Exception as e:
         logger.warning(f"[delivery_agent] Memory save failed (non-critical): {e}")
 
-    # Sentiment scoring for watchlist stories (Phase 2, non-blocking)
+    # Phase 2: Sentiment tracking
     try:
         from app.watchlist import score_and_track_sentiment
         await score_and_track_sentiment(curated_stories, user_id)

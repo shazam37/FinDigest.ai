@@ -507,3 +507,49 @@ async def fetch_sentiment_window(entity: str, days: int) -> list[dict]:
             (entity, cutoff),
         )).fetchall()
         return [{"score": r[0], "title": r[1], "scored_at": r[2]} for r in rows]
+    
+async def create_phase3_schema():
+    """
+    Idempotent Phase 3 table creation.
+
+    New tables:
+      - chat_history    : Q&A conversation log per user
+      - research_briefs : deep-dive research brief metadata + JSON content
+    """
+    async with get_conn() as conn:
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id          SERIAL PRIMARY KEY,
+                user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                query       TEXT NOT NULL,
+                answer      TEXT NOT NULL,
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS chat_history_user_idx
+            ON chat_history (user_id, created_at DESC)
+        """)
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS research_briefs (
+                id          SERIAL PRIMARY KEY,
+                brief_id    TEXT UNIQUE NOT NULL,
+                topic       TEXT NOT NULL,
+                user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                status      TEXT NOT NULL DEFAULT 'pending',
+                story_count INTEGER DEFAULT 0,
+                brief_json  JSONB,
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS research_briefs_user_idx
+            ON research_briefs (user_id, created_at DESC)
+        """)
+
+        await conn.commit()
+        logger.info("Phase 3 database schema ready")
