@@ -1,8 +1,13 @@
 # FinTech Intelligence Agent
 
-A production-grade, self-improving AI agent that monitors fintech news and delivers personalised daily briefings to busy executives — without them having to ask.
+> **A self-improving AI agent that monitors fintech news and delivers personalised daily briefings — so you always know what matters, without having to look.**
 
-Built on **FastAPI + LangGraph + PostgreSQL + Groq**, deployable on Render's free tier in under 30 minutes.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-blue)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688)](https://fastapi.tiangolo.com)
+[![LangGraph](https://img.shields.io/badge/LangGraph-0.2-orange)](https://langchain-ai.github.io/langgraph/)
+
+**[🌐 Landing Page](https://fintech-intelligence.vercel.app)** · **[🧩 Install Extension](#browser-extension)** · **[📖 API Docs](/docs)** · **[💬 Contribute](#contributing)**
 
 ---
 
@@ -10,71 +15,68 @@ Built on **FastAPI + LangGraph + PostgreSQL + Groq**, deployable on Render's fre
 
 Every morning at 9 AM, the agent:
 
-1. Runs 8 parallel news searches across banks, regulators, and fintech companies
-2. Filters out share price movements, conference coverage, and general market commentary
-3. Removes stories already seen in the last 7 days using semantic similarity (pgvector)
-4. Applies your personal preference profile — learned from your 👍 / 👎 clicks
-5. Sends a beautifully formatted email with 6–8 stories, each with a 2–3 sentence executive synopsis, publication name, and link
-6. Fans out to Slack and Telegram if configured
-7. Tracks sentiment for your watchlist entities and alerts you when something shifts
+1. Runs **8 parallel Tavily searches** across banks, regulators, neobanks, and fintech verticals
+2. Filters out share prices, conference coverage, and market noise — before the LLM even sees them
+3. Removes stories already sent in the last 7 days using **semantic similarity** (pgvector + sentence embeddings)
+4. Applies your **personal preference profile** — learned from 👍 / 👎 clicks, and active from day one via onboarding
+5. Sends a beautifully formatted email with 6–8 stories, each with a 2–3 sentence executive synopsis
+6. Fans out to **Slack**, **Telegram**, and **WhatsApp** simultaneously
+7. Creates a **Google Calendar event** as an audit trail
+8. Tracks **sentiment** on your watched entities and alerts you when something shifts
 
-It also runs a breaking news check every 2 hours, sends a narrative "Week in Review" every Friday, and emails itself a health report every Monday.
+Between digests: a lighter agent polls every 2 hours for breaking news. Stories scoring **8+/10 urgency** trigger immediate delivery.
+
+Every Friday: a narrative **Week in Review** synthesises the week's themes into analytical arcs — not a list, but a story.
+
+Every Monday: the agent **emails itself a health report** with LLM-analysed error patterns and KPIs.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    APScheduler                          │
-│  9AM digest · 2h alerts · Fri synthesis · Mon health   │
-└────────────────┬────────────────────────────────────────┘
-                 │
-        ┌────────▼────────┐
-        │   LangGraph     │  PostgreSQL checkpoint (fault-tolerant)
-        │  StateGraph     │  Resumes from last node if server restarts
-        └────────┬────────┘
-                 │
-    ┌────────────┼────────────┐
-    │            │            │
-┌───▼───┐  ┌────▼────┐  ┌────▼────┐
-│ news  │  │ memory  │  │curator  │
-│ agent │  │ agent   │  │ agent   │
-│Tavily │  │pgvector │  │  Groq   │
-└───┬───┘  └────┬────┘  └────┬────┘
-    │            │            │
-    └────────────┼────────────┘
-                 │
-        ┌────────▼────────┐
-        │delivery agent   │
-        │ Gmail · Slack   │
-        │  Telegram       │
-        └────────┬────────┘
-                 │
-        ┌────────▼────────┐
-        │ calendar agent  │
-        │ DB run log      │
-        └─────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                       APScheduler                            │
+│  9 AM digest · 2h alerts · Fri synthesis · Mon health       │
+└────────────────────┬─────────────────────────────────────────┘
+                     │
+            ┌────────▼────────┐
+            │   LangGraph     │  PostgreSQL checkpoint — resumes on restart
+            │  StateGraph     │
+            └────────┬────────┘
+                     │
+     ┌───────────────┼────────────────┐
+     ▼               ▼                ▼
+ news_agent     memory_agent     curator_agent
+ (Tavily)       (pgvector)       (Groq LLM)
+     │               │                │
+     └───────────────┼────────────────┘
+                     ▼
+            delivery_agent
+          Gmail · Slack · Telegram · WhatsApp
+                     │
+            calendar_agent
+          Calendar event · DB run log
 ```
 
-### Tech Stack
+### Stack
 
-| Layer | Technology | Why |
-|---|---|---|
-| API framework | FastAPI | Async, fast, familiar |
-| Agent orchestration | LangGraph 0.2 | Supervisor + specialist nodes, fault-tolerant checkpointing |
-| LLM | Groq (Llama 3.3 70B) | Free tier, GPT-4 class, ~1s latency |
-| News search | Tavily | Purpose-built for AI agents, structured results |
-| Database | PostgreSQL + pgvector | Checkpointing, story memory, user data |
-| Embeddings | all-MiniLM-L6-v2 | 80MB, runs offline, 384-dim sentence embeddings |
-| Email | Gmail API (OAuth2) | Free, reliable, proper deliverability |
-| Calendar | Google Calendar API | Audit trail of sent digests |
-| Slack | slack-sdk | Free for personal/small team use |
-| Telegram | Bot API (webhook) | Free, interactive commands |
-| PDF | reportlab | Bundled, no external service |
-| Observability | LangSmith | Free tier, 5,000 traces/month |
-| Scheduler | APScheduler | Already in your FastAPI process |
-| Deploy | Render | Free tier, Docker, PostgreSQL included |
+| Layer | Technology |
+|---|---|
+| API | FastAPI 0.115 |
+| Agent orchestration | LangGraph 0.2 |
+| LLM | Groq — Llama 3.3 70B (free) |
+| News search | Tavily |
+| Database | PostgreSQL + pgvector |
+| Embeddings | all-MiniLM-L6-v2 (offline, 80MB) |
+| Email | Gmail API (OAuth2) |
+| Slack | slack-sdk |
+| WhatsApp | Twilio (free sandbox) |
+| Telegram | Bot API + webhook |
+| PDF | reportlab |
+| Observability | LangSmith (free tier) |
+| Deploy | Render (free tier) |
+| Browser Extension | Manifest V3 — Chrome + Firefox |
 
 ---
 
@@ -83,45 +85,56 @@ It also runs a breaking news check every 2 hours, sends a narrative "Week in Rev
 ```
 fintech-agent/
 ├── app/
-│   ├── main.py                  # FastAPI app, lifespan, scheduler, all routers
-│   ├── config.py                # All settings via pydantic-settings + .env
-│   ├── database.py              # psycopg3 pool, all schema, all DB helpers
-│   ├── memory.py                # Embedding + pgvector semantic deduplication
-│   ├── preferences.py           # Feedback learning + preference profile builder
-│   ├── watchlist.py             # Entity tracking + sentiment scoring + velocity alerts
-│   ├── llm.py                   # Groq curation prompt with preference injection
-│   ├── search.py                # Tavily search queries + exclusion filters
-│   ├── email_builder.py         # HTML email templates (digest, alert, synthesis, health)
-│   ├── gmail.py                 # Gmail API OAuth2 sender + Calendar event logger
-│   ├── observability.py         # LangSmith setup + Monday health report
-│   ├── alert_graph.py           # Breaking news LangGraph (separate from digest graph)
+│   ├── main.py                  # FastAPI app, lifespan, all routers
+│   ├── config.py                # All settings via pydantic-settings
+│   ├── database.py              # psycopg3 pool, schema, all DB helpers
+│   ├── memory.py                # pgvector semantic deduplication
+│   ├── preferences.py           # Feedback learning + onboarding cold-start
+│   ├── watchlist.py             # Entity tracking + sentiment + velocity alerts
+│   ├── llm.py                   # Groq curation with preference injection
+│   ├── search.py                # Tavily queries + exclusion filters
+│   ├── email_builder.py         # HTML templates for all 5 email types
+│   ├── gmail.py                 # Gmail API sender + Calendar logger
+│   ├── observability.py         # LangSmith + Monday health report
+│   ├── alert_graph.py           # Breaking news LangGraph
 │   ├── synthesis_graph.py       # Friday narrative synthesis
-│   ├── agent.py                 # Backwards-compat shim → digest_graph
-│   ├── state.py                 # In-memory dashboard state
+│   ├── demo.py                  # Demo mode — static email for presentations
 │   ├── graph/
-│   │   ├── state.py             # DigestState TypedDict (shared across all nodes)
-│   │   ├── digest_graph.py      # Compiles StateGraph with AsyncPostgresSaver
-│   │   ├── news_agent.py        # Node 1: Tavily search + watchlist queries
-│   │   ├── memory_agent.py      # Node 2: pgvector semantic deduplication
-│   │   ├── curator_agent.py     # Node 3: Groq ranking + synopsis + preference inject
+│   │   ├── state.py             # DigestState TypedDict
+│   │   ├── digest_graph.py      # Compiles StateGraph + AsyncPostgresSaver
+│   │   ├── news_agent.py        # Node 1: Tavily + watchlist queries
+│   │   ├── memory_agent.py      # Node 2: pgvector deduplication
+│   │   ├── curator_agent.py     # Node 3: Groq + preference injection
 │   │   ├── builder_agent.py     # Node 4: validation gate
-│   │   ├── delivery_agent.py    # Node 5: Gmail + channel fan-out + memory save
-│   │   └── calendar_agent.py    # Node 6: Calendar event + DB run persist
+│   │   ├── delivery_agent.py    # Node 5: Gmail + fan-out + memory save
+│   │   └── calendar_agent.py    # Node 6: Calendar + DB persist
 │   ├── delivery/
 │   │   ├── channels.py          # Multi-channel fan-out coordinator
-│   │   ├── slack.py             # Slack WebClient delivery
-│   │   └── telegram.py          # Telegram Bot API + webhook command handler
+│   │   ├── slack.py             # Slack delivery
+│   │   ├── telegram.py          # Telegram bot + webhook handler
+│   │   └── whatsapp.py          # WhatsApp via Twilio
 │   └── routers/
-│       ├── feedback.py          # GET /feedback — one-click email feedback
-│       ├── watchlist.py         # CRUD /watchlist + sentiment endpoints
-│       ├── users.py             # /users — multi-user management
-│       ├── chat.py              # POST /chat — RAG Q&A over story archive
-│       ├── research.py          # POST /research — deep-dive brief + PDF
-│       └── dashboard.py         # GET /dashboard/* — full web UI (HTMX)
+│       ├── feedback.py          # One-click email feedback
+│       ├── watchlist.py         # Watchlist CRUD + sentiment
+│       ├── users.py             # Multi-user management
+│       ├── chat.py              # RAG Q&A over story archive
+│       ├── research.py          # Deep-dive brief + PDF generation
+│       ├── subscribe.py         # Public subscribe + onboarding flow
+│       └── dashboard.py         # HTMX web dashboard
+├── extension/
+│   ├── manifest.json            # Manifest V3
+│   ├── src/
+│   │   ├── background.js        # Service worker, context menus, API proxy
+│   │   ├── content.js           # Toast notifications + sidebar panel
+│   │   ├── content.css          # Sidebar + toast styles
+│   │   ├── popup.html           # Extension popup (4 tabs)
+│   │   └── popup.js             # Popup logic
+│   └── README.md
 ├── scripts/
-│   ├── authorize_google.py      # One-time Google OAuth token generation
-│   ├── setup_database.py        # One-time DB schema creation
-│   └── setup_telegram.py        # One-time Telegram webhook registration
+│   ├── authorize_google.py      # One-time Google OAuth token
+│   ├── setup_database.py        # DB schema creation
+│   ├── setup_telegram.py        # Telegram webhook registration
+│   └── generate_icons.py        # Extension PNG icon generator
 ├── Dockerfile
 ├── requirements.txt
 └── .env.example
@@ -131,17 +144,16 @@ fintech-agent/
 
 ## Prerequisites
 
-Before you start, create free accounts at:
-
-| Service | URL | What you need |
+| Service | URL | Free allowance |
 |---|---|---|
-| Groq | console.groq.com | API key |
-| Tavily | app.tavily.com | API key (1,000 searches/month free) |
-| Google Cloud | console.cloud.google.com | OAuth2 credentials (Gmail + Calendar APIs) |
-| Render | render.com | Account for deployment |
-| LangSmith *(optional)* | smith.langchain.com | API key |
-| Slack *(optional)* | api.slack.com/apps | Bot token + channel ID |
-| Telegram *(optional)* | t.me/BotFather | Bot token + your chat ID |
+| Groq | console.groq.com | 14,400 req/day |
+| Tavily | app.tavily.com | 1,000 searches/month |
+| Google Cloud | console.cloud.google.com | Gmail + Calendar free |
+| Render | render.com | Web service + PostgreSQL free |
+| LangSmith *(optional)* | smith.langchain.com | 5,000 traces/month |
+| Slack *(optional)* | api.slack.com/apps | Unlimited personal |
+| Twilio *(optional)* | twilio.com | WhatsApp sandbox free |
+| Telegram *(optional)* | t.me/BotFather | Unlimited |
 
 ---
 
@@ -150,549 +162,324 @@ Before you start, create free accounts at:
 ### 1. Clone and install
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/YOUR_USERNAME/fintech-agent.git
 cd fintech-agent
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment
+### 2. Configure
 
 ```bash
 cp .env.example .env
-```
-
-Open `.env` and fill in at minimum:
-
-```env
-GROQ_API_KEY=gsk_...
-TAVILY_API_KEY=tvly_...
-RECIPIENT_EMAIL=you@example.com
-SENDER_EMAIL=your_gmail@gmail.com
-DATABASE_URL=postgresql://user:password@localhost:5432/fintech_agent
-APP_BASE_URL=http://localhost:8000
+# Fill in at minimum: GROQ_API_KEY, TAVILY_API_KEY, RECIPIENT_EMAIL,
+# SENDER_EMAIL, DATABASE_URL, APP_BASE_URL
 ```
 
 ### 3. Set up Google OAuth
 
-This authorises the app to send Gmail and create Calendar events on your behalf.
+1. [console.cloud.google.com](https://console.cloud.google.com) → create project
+2. Enable **Gmail API** and **Google Calendar API**
+3. Credentials → OAuth client ID → Desktop app → download JSON
+4. Save as `credentials/google_credentials.json`
 
-**Step 1 — Enable APIs in Google Cloud Console:**
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create a new project (or use an existing one)
-3. Navigate to **APIs & Services → Library**
-4. Enable **Gmail API**
-5. Enable **Google Calendar API**
-
-**Step 2 — Create OAuth2 credentials:**
-1. Go to **APIs & Services → Credentials**
-2. Click **Create Credentials → OAuth client ID**
-3. Application type: **Desktop app**
-4. Download the JSON file
-5. Save it as `credentials/google_credentials.json`
-
-**Step 3 — Authorise and generate token:**
 ```bash
 python scripts/authorize_google.py
+# Opens browser — sign in and grant permissions
 ```
-This opens a browser window. Sign in with your Gmail account and grant the requested permissions. A `credentials/token.json` file is created — keep this safe.
 
-### 4. Set up PostgreSQL
-
-Install PostgreSQL locally if you don't have it, then:
+### 4. Database
 
 ```bash
 createdb fintech_agent
 python scripts/setup_database.py
 ```
 
-This creates all 8 tables and enables the pgvector extension.
-
-### 5. Run locally
+### 5. Run
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-Open [http://localhost:8000/dashboard](http://localhost:8000/dashboard) — you should see the web dashboard.
-
-To trigger your first digest immediately:
+Visit [http://localhost:8000/dashboard](http://localhost:8000/dashboard) then trigger a test run:
 
 ```bash
 curl http://localhost:8000/run-now
-# Wait ~60 seconds, then:
-open http://localhost:8000/preview
+# Wait ~60s, then open http://localhost:8000/preview
 ```
 
 ---
 
-## Deploying to Render
+## Deploy to Render
 
-### 1. Create a PostgreSQL database
+### 1. PostgreSQL
 
-In your Render dashboard:
-1. Click **New → PostgreSQL**
-2. Choose the free tier
-3. Copy the **Internal Database URL** (used inside Render's network)
+Render → New → PostgreSQL → free tier → copy **Internal Database URL**.
 
-### 2. Enable pgvector on Render Postgres
-
-Connect to your Render database using the external connection string:
-
-```bash
-psql <your-external-database-url>
-```
-
-Then run:
+Enable pgvector (one-time, using external URL):
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
-\q
 ```
 
-### 3. Create a Web Service
+### 2. Web Service
 
-1. Click **New → Web Service**
-2. Connect your GitHub repo
-3. Choose **Docker** as the environment
-4. Set the following environment variables:
+New → Web Service → Docker environment.
 
-**Required:**
+**Required env vars:**
 
 | Variable | Value |
 |---|---|
-| `GROQ_API_KEY` | Your Groq API key |
-| `TAVILY_API_KEY` | Your Tavily API key |
-| `RECIPIENT_EMAIL` | Email address to receive digests |
-| `SENDER_EMAIL` | Your Gmail address |
-| `DATABASE_URL` | Render internal PostgreSQL URL |
-| `APP_BASE_URL` | `https://your-app-name.onrender.com` |
-| `GOOGLE_CREDENTIALS_JSON` | Paste full contents of `credentials/google_credentials.json` |
-| `GOOGLE_TOKEN_JSON` | Paste full contents of `credentials/token.json` |
+| `GROQ_API_KEY` | Groq key |
+| `TAVILY_API_KEY` | Tavily key |
+| `RECIPIENT_EMAIL` | Delivery address |
+| `SENDER_EMAIL` | Gmail address |
+| `DATABASE_URL` | Internal PostgreSQL URL |
+| `APP_BASE_URL` | `https://your-app.onrender.com` |
+| `GOOGLE_CREDENTIALS_JSON` | Contents of `credentials/google_credentials.json` |
+| `GOOGLE_TOKEN_JSON` | Contents of `credentials/token.json` (printed on first auth) |
 
-> **Important:** The `token.json` content is printed to your terminal when you run `scripts/authorize_google.py`. Copy that exact JSON string.
+**Optional:**
 
-**Optional but recommended:**
+```
+USER_TIMEZONE, SLACK_BOT_TOKEN, SLACK_CHANNEL_ID,
+TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, WHATSAPP_TO,
+LANGSMITH_API_KEY, DEMO_MODE
+```
 
-| Variable | Value |
-|---|---|
-| `USER_TIMEZONE` | e.g. `Asia/Kolkata`, `Europe/London`, `America/New_York` |
-| `SLACK_BOT_TOKEN` | `xoxb-...` from your Slack app |
-| `SLACK_CHANNEL_ID` | Channel ID beginning with `C` |
-| `TELEGRAM_BOT_TOKEN` | From @BotFather |
-| `TELEGRAM_CHAT_ID` | Your personal Telegram chat ID |
-| `LANGSMITH_API_KEY` | From smith.langchain.com |
-
-4. Click **Deploy**. The first build takes 5–8 minutes (it downloads the 80MB embedding model into the Docker image).
-
-### 4. Register the Telegram webhook (if using Telegram)
-
-After your first successful deploy:
+### 3. After deploy
 
 ```bash
-TELEGRAM_BOT_TOKEN=xxx APP_BASE_URL=https://your-app.onrender.com \
-  python scripts/setup_telegram.py
+# Register Telegram webhook (if using Telegram)
+python scripts/setup_telegram.py
 ```
 
-This registers your deployed URL with Telegram's Bot API.
-
-### 5. Verify the deployment
-
-```
-GET https://your-app.onrender.com/health
-```
-
-Expected response:
-```json
-{
-  "status": "ok",
-  "phase": 3,
-  "scheduler_running": true,
-  "graph_ready": true,
-  "db_pool_open": true,
-  "langsmith_enabled": true,
-  "slack_enabled": true,
-  "telegram_enabled": true
-}
-```
-
-Visit `https://your-app.onrender.com/dashboard` to see the web UI.
+Verify: `GET https://your-app.onrender.com/health`
 
 ---
 
-## Features
+## Browser Extension
 
-### Daily Digest (9:00 AM)
+Brings your agent into every webpage.
 
-The core feature. Every morning at 9 AM in your timezone, the LangGraph pipeline runs:
+### Features
 
-- **8 parallel Tavily searches** across fintech verticals (regulation, open banking, fraud, M&A, CBDC, neobanks, etc.)
-- **Keyword exclusion filter** removes share prices, conference coverage, and general market commentary before they reach the LLM
-- **Semantic deduplication** — stories similar to those sent in the last 7 days are filtered using cosine similarity on sentence embeddings stored in pgvector
-- **Groq curation** — Llama 3.3 70B selects the best 6–8 stories, writes 2–3 sentence executive synopses, and generates a sharp subject line
-- **Preference injection** — if you have 5+ feedback signals, your preference profile is injected into the curation prompt
-- **Multi-channel delivery** — Gmail (primary), Slack thread, Telegram messages
-- **Google Calendar event** created as an audit trail of the send
-- **PostgreSQL checkpoint** — if the server restarts mid-run, the graph resumes from the last completed node
-
-### Breaking News Alerts
-
-Every 2 hours, a lighter LangGraph subgraph scans for high-urgency stories using 6 targeted queries (bank failures, regulatory enforcement actions, cyber incidents, etc.). Groq scores each story 1–10 for urgency. Stories scoring **8 or above** trigger an immediate email and Telegram message — no waiting for 9 AM.
-
-Alert history is persisted in PostgreSQL so the same story never triggers a repeat alert.
-
-### Feedback Learning
-
-Every story in the email has a one-click 👍 / 👎 link. Clicking opens a confirmation page in your browser and records the signal. After 5 signals, the agent builds a preference profile:
-
-- Topics you like (e.g. "regulation", "CBDC", "open banking")
-- Topics to deprioritise (e.g. "startup funding rounds")
-- Preferred sources (e.g. "Financial Times", "Reuters")
-- Entities that appear frequently in your liked stories
-
-This profile is injected into the Groq curation prompt on every subsequent run. **The agent gets smarter with every click.**
-
-View your current profile at `/dashboard/preferences` or via `GET /feedback/stats`.
-
-### Watchlist
-
-Track specific companies, regulators, topics, or people. Watched entities get dedicated Tavily searches on every digest run — their stories are **guaranteed to appear** in the digest, bypassing the normal LLM ranking gate.
-
-Managed via:
-- The `/dashboard/watchlist` web UI
-- `POST /watchlist` API
-- `/add <entity>` Telegram command
-
-Sentiment is scored for each watchlist story (-1.0 to +1.0) using Groq. If an entity's average sentiment shifts by 0.3 or more in 48 hours versus its 30-day baseline, you receive an immediate **Sentiment Velocity Alert** email.
-
-### Weekly Narrative Synthesis (Friday 8 AM)
-
-Every Friday morning, the synthesis agent reads all stories sent during the week (from `story_memory`) and asks Groq to extract 3–5 macro narrative themes — not a list of events, but actual arcs:
-
-> *"Regulator pressure on BNPL intensified this week, with three major enforcement actions in the EU and UK suggesting a coordinated push toward stricter consumer lending rules."*
-
-Delivered as a "Week in Review" email before the regular Friday digest.
-
-### Deep-Dive Research Briefs
-
-On demand, request a structured research brief on any topic:
-
-```bash
-POST /research
-{ "topic": "Klarna", "send_email": true }
-```
-
-The research agent runs up to 15 targeted searches across a 30-day window, then synthesises the results into:
-
-- **Executive summary** (3–4 sentences)
-- **Key developments** (5–10 items, most recent first, with dates)
-- **Strategic implications** (2–4 analytical themes)
-- **Outlook**
-- **Source list**
-
-Delivered as an HTML email and a professionally formatted **PDF** (downloadable from `/research/{id}/pdf`). Typically ready in 30–60 seconds. View and manage all briefs at `/dashboard/research`.
-
-### Conversational Q&A
-
-Ask natural language questions about recent stories directly from the dashboard or Telegram:
-
-> *"What happened with HSBC this week?"*
-> *"Any news about open banking regulation?"*
-> *"Summarise everything about Stripe from the last two weeks"*
-
-Answers are generated using RAG:
-1. Your query is embedded with the same model used for story storage
-2. pgvector cosine similarity retrieves the most relevant stories from the archive
-3. Groq synthesises an answer with `[n]` citations linking back to sources
-
-Available at `/dashboard/chat`, `POST /chat` API, or via any Telegram message.
-
-### Telegram Bot
-
-If configured, the Telegram bot provides real-time interaction:
-
-| Command | What it does |
+| Tab / Feature | What it does |
 |---|---|
-| `/start` | Welcome message and command list |
-| `/digest` | Trigger a digest run immediately |
-| `/status` | Last run status and story count |
-| `/watchlist` | View your current watchlist |
-| `/add <entity>` | Add an entity to your watchlist |
-| `/remove <n>` | Remove watchlist item by number |
-| `/ask <question>` | Ask the Q&A agent |
-| *(any message)* | Treated as a Q&A query |
+| **Ask** | RAG Q&A over your story archive — semantic search + Groq synthesis |
+| **Watchlist** | View/add/remove entities with live 7-day sentiment scores |
+| **Status** | Last run info, trigger run, preview email, open dashboard |
+| **Settings** | Backend URL and user ID |
+| **Right-click → Add to Watchlist** | Select any text → one-click watchlist add |
+| **Right-click → Ask about this page** | Opens popup pre-filled with page title |
+| **Sidebar** | Slides in on any page, auto-searches archive, shows answer + citations |
 
-Breaking news alerts and digest stories are also pushed to your Telegram chat automatically.
-
-### Multi-User Support
-
-The system supports multiple recipients with different role-based preferences:
+### Install (Developer mode)
 
 ```bash
-POST /users
-{
-  "email": "risk@company.com",
-  "name": "Risk Officer",
-  "role": "risk_officer",
-  "timezone": "Europe/London"
-}
+pip install Pillow
+python scripts/generate_icons.py
 ```
 
-Available roles: `executive` (balanced), `risk_officer` (compliance/fraud weighted), `product_lead` (innovation/API weighted), `investor` (M&A/funding weighted).
+**Chrome:** `chrome://extensions` → Developer mode ON → Load unpacked → select `extension/`
 
-Trigger personalised digests for all active users:
+**Firefox:** `about:debugging` → This Firefox → Load Temporary Add-on → select `extension/manifest.json`
+
+Then: extension icon → Settings → enter your backend URL → Save → Test Connection.
+
+### Publishing to Chrome Web Store
+
 ```bash
-POST /users/run-digest
+cd fintech-agent
+zip -r extension.zip extension/ --exclude "*/\.*"
 ```
 
-Each user gets their own LangGraph run with their own preference profile and watchlist injected.
+1. [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole)
+2. One-time $5 developer fee
+3. Upload `extension.zip`, fill in store listing, submit for review (~3–7 days)
 
-### Web Dashboard
+---
 
-A full self-serve web UI at `/dashboard`, built with HTMX + Chart.js — no separate frontend deploy, no npm, no build step.
+## User Onboarding
 
-| Page | URL | What it shows |
-|---|---|---|
-| Overview | `/dashboard` | KPIs, current status, recent run history |
-| Watchlist | `/dashboard/watchlist` | Entity manager, 7-day sentiment badges, add/remove |
-| Preferences | `/dashboard/preferences` | Feedback signals, active profile, liked/disliked topics |
-| Research | `/dashboard/research` | Brief launcher, past briefs, PDF links |
-| Q&A | `/dashboard/chat` | Chat interface with inline source citations |
-| Run History | `/dashboard/runs` | Full run log with status, duration, errors |
+Share `/subscribe` with anyone. The flow:
 
-### Agent Self-Monitoring
+1. Enter name + email
+2. Select sectors (10 options), regions (6 options), role (4 options)
+3. Preferences saved — **first digest is immediately tailored**
+4. Welcome email with instructions + dashboard link
 
-Every Monday at 8 AM, the agent emails itself a **health report** covering the last 7 days:
+No waiting for the algorithm. The onboarding profile activates from digest #1.
 
-- Success rate, total runs, failed/aborted breakdown
-- Average stories per digest, average run duration
-- Error pattern analysis — Groq reads the error messages and identifies the most likely root cause in plain English
-- Table of the 10 most recent runs
+---
 
-Also available on demand: `GET /health-report-now`
+## Preference Learning
 
-LangSmith tracing is enabled automatically when `LANGSMITH_API_KEY` is set. Every LangGraph node execution is traced — inputs, outputs, latency — at [smith.langchain.com](https://smith.langchain.com).
+Each email story has 👍 / 👎 links. Each click:
+1. Records signal in `story_feedback`
+2. Groq rebuilds preference profile from last 50 signals
+3. Profile injected into next digest's curation prompt
+
+After 5 signals, learned profile supplements onboarding. After 20+, it largely supersedes it.
 
 ---
 
 ## API Reference
 
-All endpoints are documented interactively at `/docs` (Swagger UI).
+Full interactive docs at `/docs`.
 
-### Core triggers
+<details>
+<summary>Digest control</summary>
 
-| Method | URL | Description |
+| Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/run-now` | Trigger daily digest immediately |
-| `GET` | `/alert-now` | Trigger breaking news check |
+| `GET` | `/run-now` | Trigger digest |
+| `GET` | `/alert-now` | Trigger alert check |
 | `GET` | `/synthesis-now` | Trigger weekly synthesis |
-| `GET` | `/health-report-now` | Trigger agent health report |
-| `GET` | `/preview` | View last generated email in browser |
-| `GET` | `/health` | Service health check |
-| `GET` | `/runs` | Run history (JSON, `?limit=30`) |
+| `GET` | `/health-report-now` | Trigger health report |
+| `GET` | `/preview` | View last email |
+| `GET` | `/health` | Health check |
+| `GET` | `/runs` | Run history |
 
-### Feedback
+</details>
 
-| Method | URL | Description |
+<details>
+<summary>Subscribe, Feedback, Watchlist, Users, Q&A, Research</summary>
+
+| Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/feedback?signal=1&url=...` | Record thumbs up (linked from email) |
-| `GET` | `/feedback?signal=-1&url=...` | Record thumbs down (linked from email) |
-| `GET` | `/feedback/stats?user_id=1` | Feedback stats + active profile summary |
-
-### Watchlist
-
-| Method | URL | Description |
-|---|---|---|
-| `GET` | `/watchlist` | List all watched entities |
-| `POST` | `/watchlist` | Add entity `{"entity": "HSBC", "entity_type": "company"}` |
-| `DELETE` | `/watchlist/{id}` | Remove entity |
-| `GET` | `/watchlist/sentiment` | Sentiment history for all entities |
-| `GET` | `/watchlist/sentiment/{entity}` | Sentiment trend + velocity delta for one entity |
-
-### Users
-
-| Method | URL | Description |
-|---|---|---|
-| `GET` | `/users` | List all active users |
-| `POST` | `/users` | Create user `{"email", "role", "timezone"}` |
-| `PUT` | `/users/{id}` | Update user role/timezone/active status |
-| `GET` | `/users/{id}/preferences` | Get preference profile |
-| `POST` | `/users/run-digest` | Trigger digest for all active users |
-
-### Chat (Q&A)
-
-| Method | URL | Description |
-|---|---|---|
-| `POST` | `/chat` | `{"query": "...", "user_id": 1, "lookback_days": 14}` |
-| `GET` | `/chat/history` | Last N exchanges for a user |
-
-### Research
-
-| Method | URL | Description |
-|---|---|---|
-| `POST` | `/research` | `{"topic": "Klarna", "send_email": true}` → returns `brief_id` |
-| `GET` | `/research` | List past briefs |
-| `GET` | `/research/{id}` | Full brief JSON |
+| `GET` | `/subscribe` | Public signup |
+| `GET` | `/unsubscribe?token=...` | One-click unsubscribe |
+| `GET` | `/feedback?signal=1&url=...` | Record 👍 |
+| `GET` | `/feedback?signal=-1&url=...` | Record 👎 |
+| `GET` | `/feedback/stats` | Feedback stats + profile |
+| `GET/POST/DELETE` | `/watchlist` | Watchlist CRUD |
+| `GET` | `/watchlist/sentiment` | Sentiment for all entities |
+| `GET/POST/PUT` | `/users` | User management |
+| `POST` | `/users/run-digest` | Digest for all users |
+| `POST` | `/chat` | Q&A query |
+| `POST` | `/research` | Research brief |
 | `GET` | `/research/{id}/pdf` | Download PDF |
 
----
-
-## Environment Variables Reference
-
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `GROQ_API_KEY` | — | ✅ | Groq API key |
-| `TAVILY_API_KEY` | — | ✅ | Tavily search API key |
-| `RECIPIENT_EMAIL` | — | ✅ | Digest delivery address |
-| `SENDER_EMAIL` | — | ✅ | Gmail account used to send |
-| `DATABASE_URL` | — | ✅ | PostgreSQL connection string |
-| `APP_BASE_URL` | `http://localhost:8000` | ✅ | Deployed URL (for feedback links) |
-| `GOOGLE_CREDENTIALS_PATH` | `credentials/google_credentials.json` | ✅ local | Path to OAuth credentials |
-| `GOOGLE_CREDENTIALS_JSON` | — | ✅ prod | Credentials JSON as env var (Render) |
-| `GOOGLE_TOKEN_JSON` | — | ✅ prod | Token JSON as env var (Render) |
-| `USER_TIMEZONE` | `Asia/Kolkata` | — | Digest send timezone |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | — | Groq model ID |
-| `MAX_STORIES` | `8` | — | Max stories per digest |
-| `LOOKBACK_HOURS` | `24` | — | Search window (hours) |
-| `MIN_STORIES_BEFORE_SEND` | `3` | — | Abort if fewer stories found |
-| `ALERT_URGENCY_THRESHOLD` | `8` | — | Min urgency score (1–10) for alerts |
-| `ALERT_POLL_HOURS` | `2` | — | Alert check frequency (hours) |
-| `SIMILARITY_THRESHOLD` | `0.85` | — | Cosine similarity for deduplication |
-| `MEMORY_LOOKBACK_DAYS` | `7` | — | Days to check for duplicates |
-| `MIN_FEEDBACK_FOR_PROFILE` | `5` | — | Signals needed before profile activates |
-| `FEEDBACK_WINDOW` | `50` | — | Recent signals used for profile |
-| `MAX_WATCHLIST_ENTITIES` | `20` | — | Per-user watchlist limit |
-| `SYNTHESIS_DAY_OF_WEEK` | `fri` | — | Weekly synthesis day |
-| `SYNTHESIS_HOUR` | `8` | — | Weekly synthesis hour |
-| `SENTIMENT_WINDOW_DAYS` | `30` | — | Sentiment baseline window |
-| `SENTIMENT_ALERT_DELTA` | `0.3` | — | Shift threshold for velocity alerts |
-| `SLACK_BOT_TOKEN` | — | — | Slack bot OAuth token |
-| `SLACK_CHANNEL_ID` | — | — | Slack channel ID |
-| `TELEGRAM_BOT_TOKEN` | — | — | Telegram bot token |
-| `TELEGRAM_CHAT_ID` | — | — | Your Telegram chat ID |
-| `LANGSMITH_API_KEY` | — | — | LangSmith API key |
-| `LANGSMITH_PROJECT` | `fintech-agent` | — | LangSmith project name |
-| `HEALTH_REPORT_HOUR` | `8` | — | Health report send hour |
-| `RESEARCH_MAX_SEARCHES` | `15` | — | Max searches per research brief |
-| `RESEARCH_MAX_STORIES` | `25` | — | Max stories per research brief |
+</details>
 
 ---
 
-## Database Schema
+## Environment Variables
 
-8 tables, all created automatically on first startup.
+<details>
+<summary>Full reference (30 variables)</summary>
 
-| Table | Purpose |
-|---|---|
-| `story_memory` | Stores pgvector embeddings of sent stories for deduplication |
-| `run_history` | Persistent log of every agent run (status, duration, story count) |
-| `alert_history` | Sent breaking alerts — prevents re-sending the same story |
-| `users` | Multi-user support with roles and timezone preferences |
-| `story_feedback` | Per-user thumbs up/down signals |
-| `user_preferences` | Materialised preference profile rebuilt after each feedback signal |
-| `watchlist_entities` | Per-user entity tracking targets |
-| `entity_sentiment` | Rolling sentiment scores per entity per story |
-| `chat_history` | Q&A conversation log |
-| `research_briefs` | Research brief metadata and JSON content |
+| Variable | Default | Description |
+|---|---|---|
+| `GROQ_API_KEY` | — | Groq API key ✅ |
+| `TAVILY_API_KEY` | — | Tavily key ✅ |
+| `RECIPIENT_EMAIL` | — | Digest recipient ✅ |
+| `SENDER_EMAIL` | — | Gmail sender ✅ |
+| `DATABASE_URL` | — | PostgreSQL URL ✅ |
+| `APP_BASE_URL` | `http://localhost:8000` | Deployed URL ✅ |
+| `GOOGLE_CREDENTIALS_JSON` | — | OAuth credentials (prod) ✅ |
+| `GOOGLE_TOKEN_JSON` | — | OAuth token (prod) ✅ |
+| `USER_TIMEZONE` | `Asia/Kolkata` | Digest timezone |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Model ID |
+| `MAX_STORIES` | `8` | Stories per digest |
+| `LOOKBACK_HOURS` | `24` | Search window |
+| `ALERT_URGENCY_THRESHOLD` | `8` | Min urgency for alerts |
+| `ALERT_POLL_HOURS` | `2` | Alert check frequency |
+| `SIMILARITY_THRESHOLD` | `0.85` | Dedup threshold |
+| `MEMORY_LOOKBACK_DAYS` | `7` | Dedup window |
+| `MIN_FEEDBACK_FOR_PROFILE` | `5` | Signals before profile |
+| `MAX_WATCHLIST_ENTITIES` | `20` | Per-user limit |
+| `SYNTHESIS_DAY_OF_WEEK` | `fri` | Synthesis day |
+| `SYNTHESIS_HOUR` | `8` | Synthesis hour |
+| `SENTIMENT_ALERT_DELTA` | `0.3` | Velocity alert threshold |
+| `SLACK_BOT_TOKEN` | — | Slack token |
+| `SLACK_CHANNEL_ID` | — | Slack channel |
+| `TELEGRAM_BOT_TOKEN` | — | Telegram token |
+| `TELEGRAM_CHAT_ID` | — | Telegram chat ID |
+| `TWILIO_ACCOUNT_SID` | — | Twilio SID |
+| `TWILIO_AUTH_TOKEN` | — | Twilio token |
+| `WHATSAPP_TO` | — | Your WhatsApp number |
+| `LANGSMITH_API_KEY` | — | LangSmith key |
+| `DEMO_MODE` | `false` | Static email for demos |
 
-LangGraph also creates its own `langgraph_checkpoints` table automatically on first graph run.
+</details>
 
 ---
 
 ## Fault Tolerance
 
-The system is designed to never fail silently:
-
-- **LangGraph checkpointing** — every node's state is snapshotted to PostgreSQL. If the Render instance restarts or crashes mid-run, the graph resumes from the last completed node on the next trigger.
-- **Misfire grace period** — if the scheduler fires while the server is restarting, APScheduler will catch up within 1 hour (digest) or 5 minutes (alerts).
-- **Graceful degradation** — if the memory deduplication fails, the pipeline continues without it. If Groq fails, the email sends with raw snippets as synopses. If Slack fails, Gmail still delivers. No silent drops.
-- **Minimum story guard** — if fewer than `MIN_STORIES_BEFORE_SEND` stories are curated, the send is skipped and the reason is logged. The agent never sends a near-empty email.
-- **Non-fatal error accumulation** — each LangGraph node appends errors to `state.errors` rather than raising exceptions. The `calendar_agent` (last node) always runs and persists the full error log to `run_history`.
-
----
-
-## Troubleshooting
-
-**Google token expired after a few days**
-
-OAuth2 tokens expire. The app auto-refreshes them, but if the refresh token itself expires (after 7 days for apps in test mode), you need to re-run:
-
-```bash
-python scripts/authorize_google.py
-```
-
-Then update `GOOGLE_TOKEN_JSON` in your Render env vars.
-
-To avoid this on production, publish your Google Cloud app (move it out of "Testing" status in the OAuth consent screen). Published apps have tokens that don't expire.
-
-**"No stories returned" on first run**
-
-Tavily's free tier sometimes rate-limits on the first few requests. Wait a few minutes and retry `GET /run-now`. If the problem persists, check your `TAVILY_API_KEY`.
-
-**pgvector extension not found**
-
-If you see `extension "vector" does not exist`, connect to your database and run:
-
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-```
-
-On Render, use the external connection string (not the internal one) for this one-time command.
-
-**Render free tier server sleeping**
-
-Render's free web services spin down after 15 minutes of inactivity. This means the 9 AM scheduler may not fire if nothing has hit the service recently. Two solutions:
-
-1. Use a free uptime monitor (e.g. UptimeRobot) to ping `GET /health` every 10 minutes
-2. Add a Render Cron Job (`GET /run-now`) as a backup trigger at 9:05 AM
-
-**Telegram bot not receiving messages**
-
-Check the webhook is registered:
-```bash
-curl https://api.telegram.org/bot{TOKEN}/getWebhookInfo
-```
-
-If the URL is wrong or empty, re-run `python scripts/setup_telegram.py`.
+- **LangGraph checkpointing** — every node snapshotted. Restart mid-run → resumes from last node.
+- **Misfire grace** — APScheduler retries missed jobs within 1h (digest) or 5min (alerts).
+- **Graceful degradation** — dedup fail → continues. Groq fail → raw snippets sent. Slack fail → Gmail still delivers.
+- **Min story guard** — fewer than `MIN_STORIES_BEFORE_SEND` curated → send skipped, logged.
+- **Self-monitoring** — Monday health report with LLM error analysis.
 
 ---
 
 ## Cost
 
-Everything runs on free tiers:
+**$0/month.** Everything runs on free tiers.
 
-| Service | Free Allowance | Typical Usage |
+| Service | Monthly usage | Limit |
 |---|---|---|
-| Groq | 14,400 req/day | ~10 req/day |
-| Tavily | 1,000 searches/month | ~280/month (8 queries × 5 × 7 days) |
-| Render Web Service | 750 hours/month | ~720 hours/month |
-| Render PostgreSQL | 1GB storage, 90 days | < 100MB typically |
-| LangSmith | 5,000 traces/month | ~30/month |
-| Slack API | Unlimited (personal) | — |
-| Telegram Bot API | Unlimited | — |
-| Google APIs | Gmail: 1B quota units/day | Negligible |
-
-**Total monthly cost: $0.**
+| Groq | ~300 req | 14,400 req/day |
+| Tavily | ~280 searches | 1,000/month |
+| Render | ~720 hours | 750 hours |
+| Render PostgreSQL | < 100MB | 1GB |
+| LangSmith | ~30 traces | 5,000/month |
 
 ---
 
-## Extending the Agent
+## Contributing
 
-The codebase is structured to make extensions straightforward:
+Contributions are welcome. This is open source — the more people improve it, the better.
 
-**Add a new delivery channel** — create `app/delivery/your_channel.py` with `send_digest_to_X()` and `send_alert_to_X()`, then add it to `app/delivery/channels.py`.
+**Areas that need help most:**
+- Additional delivery channels (Discord, Teams, LINE)
+- Test suite (currently zero tests — intentionally shipped fast)
+- Multi-language digest support
+- Firefox extension testing and fixes
+- Docker Compose for self-hosting
+- Helm chart for Kubernetes
 
-**Add a new LangGraph node** — create `app/graph/your_node.py`, register it in `digest_graph.py`, add edges. The `DigestState` TypedDict in `graph/state.py` is the single place to add new state fields.
+**How:**
+1. Fork the repo
+2. `git checkout -b feature/your-feature`
+3. Make focused changes with clear commits
+4. Open a PR
 
-**Add a new search vertical** — add a query string to `SEARCH_QUERIES` in `search.py` and a corresponding entry to `ALERT_QUERIES` in `alert_graph.py`.
+**Register as a contributor** on the [landing page](https://fintech-intelligence.vercel.app) — we'll add you to the project channel.
 
-**Change the LLM model** — set `GROQ_MODEL` in your `.env`. Any model available on Groq's API works without code changes.
+**Code style:** async/await throughout, pydantic for validation, docstrings on every module, imperative commit messages.
 
-**Add a new email template** — add a `build_*_html()` function to `email_builder.py` following the existing pattern.
+---
+
+## Troubleshooting
+
+**Google token expires** — publish the OAuth app (Testing → Published) or re-run `scripts/authorize_google.py` and update `GOOGLE_TOKEN_JSON` on Render.
+
+**No stories on first run** — Tavily rate-limits new accounts. Wait 2 minutes, retry `/run-now`.
+
+**pgvector not found** — `CREATE EXTENSION IF NOT EXISTS vector;` in your database.
+
+**Render server sleeping** — add a Render Cron Job at 9:05 AM calling `/run-now`, and use UptimeRobot to ping `/health` every 10 minutes.
+
+**Telegram not responding** — re-run `scripts/setup_telegram.py` after deploy.
+
+**WhatsApp not arriving** — activate the Twilio sandbox: text `join <your-word>` to `+1 415 523 8886`.
+
+**Extension can't connect** — check Settings tab URL has no trailing slash and uses HTTPS.
 
 ---
 
 ## License
 
 MIT — use freely, modify freely, deploy freely.
+
+---
+
+## Acknowledgements
+
+Built with [LangGraph](https://langchain-ai.github.io/langgraph/), [Groq](https://groq.com), [Tavily](https://tavily.com), [FastAPI](https://fastapi.tiangolo.com), and [pgvector](https://github.com/pgvector/pgvector).
