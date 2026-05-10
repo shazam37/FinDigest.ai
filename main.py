@@ -23,8 +23,8 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, Form
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -35,14 +35,16 @@ from app.state import agent_state
 from app.database import (
     init_pool, close_pool,
     create_schema, create_phase2_schema, create_phase3_schema,
+    create_onboarding_schema,
     fetch_run_history, get_or_create_default_user,
 )
 from app.graph.digest_graph import build_graph, run_fintech_digest
 from app.alert_graph import build_alert_graph, run_alert_check
 from app.synthesis_graph import run_weekly_synthesis
 from app.observability import setup_langsmith, run_health_report
-from app.routers import feedback, watchlist, users
-from app.routers import chat, research, dashboard
+from app.demo import is_demo_mode, get_demo_email_html, DEMO_RUN_HISTORY
+from app.routers import feedback, watchlist, users, chat, research, dashboard
+from app.routers.subscribe import router as subscribe_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,14 +57,13 @@ scheduler = AsyncIOScheduler(timezone=pytz.utc)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── 1. Observability ───────────────────────────────────────────────────
     setup_langsmith()
 
-    # ── 2. Database ────────────────────────────────────────────────────────
     await init_pool()
     await create_schema()
     await create_phase2_schema()
     await create_phase3_schema()
+    await create_onboarding_schema()
 
     try:
         default_uid = await get_or_create_default_user()
@@ -70,11 +71,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Could not create default user: {e}")
 
-    # ── 3. LangGraph ───────────────────────────────────────────────────────
     await build_graph()
     await build_alert_graph()
 
-    # ── 4. Scheduler ───────────────────────────────────────────────────────
     tz = pytz.timezone(settings.USER_TIMEZONE)
 
     scheduler.add_job(
@@ -101,9 +100,11 @@ async def lifespan(app: FastAPI):
     )
 
     scheduler.start()
+    demo_note = " [DEMO MODE]" if is_demo_mode() else ""
     logger.info(
-        f"Scheduler started — digest 9AM · alerts every {settings.ALERT_POLL_HOURS}h · "
-        f"synthesis {settings.SYNTHESIS_DAY_OF_WEEK.upper()} · health report MON"
+        f"Startup complete{demo_note} — "
+        f"digest 9AM · alerts every {settings.ALERT_POLL_HOURS}h · "
+        f"synthesis {settings.SYNTHESIS_DAY_OF_WEEK.upper()} · health MON"
     )
 
     yield
@@ -114,7 +115,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="FinTech Intelligence Agent",
-    description="LangGraph-powered multi-agent fintech news briefing system — Phase 1+2+3",
+    description="LangGraph-powered multi-agent fintech news briefing system",
     lifespan=lifespan,
 )
 
@@ -125,18 +126,44 @@ app.include_router(users.router)
 app.include_router(chat.router)
 app.include_router(research.router)
 app.include_router(dashboard.router)
+app.include_router(subscribe_router)
 
+# ── Subscribe form POST (FastAPI requires explicit Form() handler) ─────────────
+@app.post("/subscribe/submit", response_class=HTMLResponse)
+async def subscribe_form(
+    background_tasks: BackgroundTasks,
+    email: str = Form(...),
+    name: str = Form(default=""),
+):
+    from app.routers.subscribe import subscribe_form_submit
+    return await subscribe_form_submit(background_tasks, email=email, name=name)
+
+@app.post("/subscribe", response_class=HTMLResponse)
+async def subscribe_post(
+    background_tasks: BackgroundTasks,
+    email: str = Form(...),
+    name: str = Form(default=""),
+):
+    from app.routers.subscribe import subscribe_form_submit
+    return await subscribe_form_submit(background_tasks, email=email, name=name)
+
+@app.post("/subscribe/onboard", response_class=HTMLResponse)
+async def onboard_post(
+    background_tasks: BackgroundTasks,
+    token: str = Form(...),
+    role: str = Form(default="executive"),
+    sectors: list[str] = Form(default=[]),
+    regions: list[str] = Form(default=[]),
+):
+    from app.routers.subscribe import onboard_submit
+    return await onboard_submit(background_tasks, token=token, role=role,
+                                sectors=sectors, regions=regions)
 
 # ── Telegram webhook ──────────────────────────────────────────────────────────
-
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request):
-    """
-    Receives updates from the Telegram Bot API.
-    Register this URL with: python scripts/setup_telegram.py
-    """
     if not settings.TELEGRAM_BOT_TOKEN:
-        return {"ok": False, "reason": "Telegram not configured"}
+        return {"ok": False}
     try:
         body = await request.json()
         from app.delivery.telegram import handle_webhook
@@ -144,57 +171,52 @@ async def telegram_webhook(request: Request):
         asyncio.create_task(handle_webhook(body))
         return {"ok": True}
     except Exception as e:
-        logger.error(f"[telegram webhook] Error: {e}")
+        logger.error(f"[telegram webhook] {e}")
         return {"ok": False}
 
 
-# ── Root (legacy monospace dashboard) ────────────────────────────────────────
-
+# ── Root ──────────────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Redirect to the Phase 3 web dashboard."""
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/dashboard", status_code=302)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
-
 @app.get("/health")
 async def health():
     from app.graph.digest_graph import _graph
     from app.database import get_pool
-    from app.config import settings as s
     return {
         "status": "ok",
-        "phase": 3,
+        "phase": "3+",
+        "demo_mode": is_demo_mode(),
         "scheduler_running": scheduler.running,
         "graph_ready": _graph is not None,
         "db_pool_open": not get_pool().closed,
-        "langsmith_enabled": bool(s.LANGSMITH_API_KEY),
-        "slack_enabled": bool(s.SLACK_BOT_TOKEN),
-        "telegram_enabled": bool(s.TELEGRAM_BOT_TOKEN),
+        "langsmith_enabled": bool(settings.LANGSMITH_API_KEY),
+        "slack_enabled": bool(settings.SLACK_BOT_TOKEN),
+        "telegram_enabled": bool(settings.TELEGRAM_BOT_TOKEN),
+        "whatsapp_enabled": bool(getattr(settings, "TWILIO_ACCOUNT_SID", None)),
     }
 
 
 # ── Manual triggers ───────────────────────────────────────────────────────────
-
 @app.get("/run-now")
 async def trigger_now(background_tasks: BackgroundTasks):
+    if is_demo_mode():
+        return {"message": "Demo mode: digest simulated. Check /preview."}
     background_tasks.add_task(run_fintech_digest)
     return {"message": "Digest triggered. Check /preview in ~60 seconds."}
-
 
 @app.get("/alert-now")
 async def trigger_alert(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_alert_check)
     return {"message": "Alert check triggered."}
 
-
 @app.get("/synthesis-now")
 async def trigger_synthesis(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_weekly_synthesis)
     return {"message": "Weekly synthesis triggered."}
-
 
 @app.get("/health-report-now")
 async def trigger_health_report(background_tasks: BackgroundTasks):
@@ -202,18 +224,22 @@ async def trigger_health_report(background_tasks: BackgroundTasks):
     return {"message": "Health report triggered."}
 
 
-# ── Preview / runs (kept for backwards compat) ────────────────────────────────
-
+# ── Preview ───────────────────────────────────────────────────────────────────
 @app.get("/preview", response_class=HTMLResponse)
 async def preview_last_email():
+    if is_demo_mode():
+        return HTMLResponse(get_demo_email_html())
     html = agent_state.get("last_email_html")
     if not html:
         raise HTTPException(status_code=404, detail="No digest yet. Hit /run-now first.")
     return html
 
 
+# ── Runs ──────────────────────────────────────────────────────────────────────
 @app.get("/runs")
 async def list_runs(limit: int = 30):
+    if is_demo_mode():
+        return JSONResponse(content={"runs": DEMO_RUN_HISTORY, "count": len(DEMO_RUN_HISTORY)})
     try:
         rows = await fetch_run_history(limit=limit)
         for r in rows:

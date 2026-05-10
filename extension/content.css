@@ -1,0 +1,270 @@
+/* FinTech Intelligence — injected styles */
+
+/* ── Toast ────────────────────────────────────────────────────────────────── */
+
+#fti-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  background: #13131a;
+  border: 1px solid #2a2a3a;
+  border-radius: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  color: #e2e2e8;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  transform: translateY(80px);
+  opacity: 0;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  max-width: 360px;
+}
+
+#fti-toast.fti-toast-visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+#fti-toast.fti-toast-error {
+  border-color: #f87171;
+}
+
+.fti-toast-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+
+.fti-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 380px;
+  height: 100vh;
+  background: #0f0f17;
+  border-left: 1px solid #2a2a3a;
+  z-index: 2147483646;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: -4px 0 24px rgba(0,0,0,0.5);
+}
+
+.fti-sidebar.fti-sidebar-open {
+  transform: translateX(0);
+}
+
+.fti-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid #2a2a3a;
+  background: #13131a;
+  flex-shrink: 0;
+}
+
+.fti-sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fti-logo-icon {
+  font-size: 22px;
+}
+
+.fti-logo-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e2e2e8;
+  letter-spacing: 0.3px;
+}
+
+.fti-logo-sub {
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+.fti-close-btn {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.fti-close-btn:hover {
+  background: #1c1c26;
+  color: #e2e2e8;
+}
+
+.fti-sidebar-search {
+  display: flex;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #2a2a3a;
+  flex-shrink: 0;
+}
+
+.fti-input {
+  flex: 1;
+  background: #1c1c26;
+  border: 1px solid #2a2a3a;
+  border-radius: 8px;
+  color: #e2e2e8;
+  font-size: 13px;
+  padding: 8px 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.fti-input:focus {
+  border-color: #60a5fa;
+}
+
+.fti-ask-btn {
+  background: #60a5fa;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.fti-ask-btn:hover {
+  opacity: 0.9;
+}
+
+.fti-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 18px;
+}
+
+.fti-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #94a3b8;
+  font-size: 13px;
+  padding: 20px 0;
+}
+
+.fti-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #2a2a3a;
+  border-top-color: #60a5fa;
+  border-radius: 50%;
+  animation: fti-spin 0.8s linear infinite;
+}
+
+@keyframes fti-spin {
+  to { transform: rotate(360deg); }
+}
+
+.fti-answer {
+  font-size: 14px;
+  line-height: 1.65;
+  color: #cbd5e1;
+  padding: 14px;
+  background: #13131a;
+  border-radius: 8px;
+  border: 1px solid #2a2a3a;
+  margin-bottom: 16px;
+}
+
+.fti-sources-label {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.fti-stories {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fti-story-card {
+  display: block;
+  padding: 10px 12px;
+  background: #13131a;
+  border: 1px solid #2a2a3a;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: border-color 0.15s;
+}
+
+.fti-story-card:hover {
+  border-color: #60a5fa;
+}
+
+.fti-story-source {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #c9a96e;
+  margin-bottom: 3px;
+}
+
+.fti-story-title {
+  font-size: 13px;
+  color: #e2e2e8;
+  line-height: 1.4;
+}
+
+.fti-error {
+  font-size: 13px;
+  color: #f87171;
+  padding: 12px;
+  background: rgba(248,113,113,0.08);
+  border-radius: 8px;
+  border: 1px solid rgba(248,113,113,0.2);
+}
+
+.fti-sidebar-footer {
+  padding: 12px 18px;
+  border-top: 1px solid #2a2a3a;
+  flex-shrink: 0;
+  background: #0f0f17;
+}
+
+.fti-footer-link {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #60a5fa;
+  text-decoration: none;
+}
+
+.fti-footer-link:hover {
+  text-decoration: underline;
+}

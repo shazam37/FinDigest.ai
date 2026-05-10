@@ -210,3 +210,74 @@ def build_preference_prompt_block(profile: dict | None) -> str:
         lines.append(f"  Always include stories mentioning: {', '.join(liked_entities)}")
 
     return "\n".join(lines)
+
+# ── Onboarding-based cold-start profile ──────────────────────────────────────
+
+SECTOR_QUERY_MAP = {
+    "payments":    "payments fintech digital transactions news",
+    "banking":     "retail banking commercial bank news",
+    "regulation":  "financial regulation compliance enforcement news",
+    "lending":     "lending credit BNPL loan fintech news",
+    "wealth":      "wealth management asset management investment news",
+    "crypto":      "cryptocurrency blockchain DeFi digital assets news",
+    "insurance":   "insurtech insurance fintech news",
+    "fraud":       "financial fraud cybersecurity banking news",
+    "cbdc":        "central bank digital currency CBDC news",
+    "openbanking": "open banking API PSD3 financial data news",
+}
+
+REGION_QUERY_MAP = {
+    "uk":     "UK United Kingdom fintech banking",
+    "india":  "India RBI fintech banking",
+    "us":     "United States Federal Reserve fintech banking",
+    "eu":     "European Union ECB fintech banking",
+    "apac":   "Asia Pacific fintech banking",
+    "global": "global international fintech",
+}
+
+
+def build_onboarding_prompt_block(onboarding: dict) -> str:
+    """
+    Builds a preference prompt block from onboarding data.
+    Used as the cold-start profile before enough feedback signals exist.
+    """
+    if not onboarding or not onboarding.get("onboarding_complete"):
+        return ""
+
+    sectors = onboarding.get("sectors", [])
+    regions = onboarding.get("regions", [])
+    role = onboarding.get("role", "executive")
+
+    role_instructions = {
+        "executive": "Prioritise strategic and high-impact stories.",
+        "risk_officer": "Prioritise regulatory changes, enforcement actions, fraud, and cybersecurity incidents.",
+        "product_lead": "Prioritise product launches, API developments, open banking, and technology innovation.",
+        "investor": "Prioritise M&A activity, funding rounds, market entries, and growth signals.",
+    }
+
+    lines = ["\nPERSONALISATION (apply this in your story selection):"]
+    if role in role_instructions:
+        lines.append(f"  Role: {role}. {role_instructions[role]}")
+    if sectors:
+        lines.append(f"  User's primary sectors of interest: {', '.join(sectors)}")
+        lines.append(f"  Prioritise stories in these sectors.")
+    if regions:
+        lines.append(f"  User's primary regions of interest: {', '.join(regions)}")
+        lines.append(f"  Prioritise stories from or about these regions.")
+
+    return "\n".join(lines)
+
+
+def get_sector_search_queries(sectors: list[str]) -> list[str]:
+    """Return targeted Tavily search queries for the user's selected sectors."""
+    queries = []
+    for s in sectors:
+        key = s.lower().replace(" ", "")
+        if key in SECTOR_QUERY_MAP:
+            queries.append(SECTOR_QUERY_MAP[key])
+    return queries
+
+
+def get_region_filters(regions: list[str]) -> list[str]:
+    """Return region-specific query suffixes."""
+    return [REGION_QUERY_MAP.get(r.lower(), "") for r in regions if r.lower() in REGION_QUERY_MAP]

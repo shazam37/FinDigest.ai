@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     LOOKBACK_HOURS: int = 24
     MAX_STORIES: int = 8
     MIN_STORIES_BEFORE_SEND: int = 3
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     # === Phase 1: PostgreSQL ===
     DATABASE_URL: str = "postgresql://localhost:5432/fintech_agent"
@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     # === Phase 3: Telegram bot ===
     TELEGRAM_BOT_TOKEN: Optional[str] = None     # From @BotFather
     TELEGRAM_CHAT_ID: Optional[str] = None       # Your personal chat ID
+
+    # === WhatsApp delivery (Twilio) ===
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    WHATSAPP_TO: Optional[str] = None          # e.g. +919876543210
+    TWILIO_WHATSAPP_FROM: str = "whatsapp:+14155238886"  # Twilio sandbox number
+
+    # === Demo mode ===
+    DEMO_MODE: bool = False
 
     # === Phase 3: LangSmith observability ===
     LANGSMITH_API_KEY: Optional[str] = None      # From smith.langchain.com

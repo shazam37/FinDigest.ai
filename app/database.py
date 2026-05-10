@@ -553,3 +553,102 @@ async def create_phase3_schema():
 
         await conn.commit()
         logger.info("Phase 3 database schema ready")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Onboarding / subscribe schema additions
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def create_onboarding_schema():
+    """
+    Adds onboarding columns to the users table and creates
+    the subscriptions table for the public subscribe flow.
+    Idempotent — safe to run on every startup.
+    """
+    async with get_conn() as conn:
+        # Add onboarding columns to users if they don't exist yet
+        for col, definition in [
+            ("sectors",             "TEXT DEFAULT ''"),
+            ("regions",             "TEXT DEFAULT ''"),
+            ("onboarding_complete", "BOOLEAN DEFAULT FALSE"),
+            ("unsubscribe_token",   "TEXT"),
+        ]:
+            await conn.execute(f"""
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS {col} {definition}
+            """)
+
+        # Token-based unsubscribe support
+        await conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS users_unsubscribe_token_idx
+            ON users (unsubscribe_token)
+            WHERE unsubscribe_token IS NOT NULL
+        """)
+
+        await conn.commit()
+        logger.info("Onboarding schema ready")
+
+
+async def upsert_user_onboarding(
+    user_id: int,
+    sectors: list[str],
+    regions: list[str],
+    role: str,
+    name: str = "",
+):
+    """Save onboarding selections and mark onboarding complete."""
+    import secrets
+    token = secrets.token_urlsafe(32)
+    async with get_conn() as conn:
+        await conn.execute(
+            """
+            UPDATE users
+            SET sectors             = %s,
+                regions             = %s,
+                role                = %s,
+                name                = COALESCE(NULLIF(%s,''), name),
+                onboarding_complete = TRUE,
+                unsubscribe_token   = COALESCE(unsubscribe_token, %s)
+            WHERE id = %s
+            """,
+            (
+                ",".join(sectors),
+                ",".join(regions),
+                role,
+                name,
+                token,
+                user_id,
+            ),
+        )
+        await conn.commit()
+
+
+async def fetch_user_onboarding(user_id: int) -> dict:
+    """Return onboarding data for a user."""
+    async with get_conn() as conn:
+        row = await (await conn.execute(
+            "SELECT sectors, regions, role, name, onboarding_complete, unsubscribe_token "
+            "FROM users WHERE id = %s",
+            (user_id,),
+        )).fetchone()
+    if not row:
+        return {}
+    return {
+        "sectors": row[0].split(",") if row[0] else [],
+        "regions": row[1].split(",") if row[1] else [],
+        "role": row[2],
+        "name": row[3],
+        "onboarding_complete": row[4],
+        "unsubscribe_token": row[5],
+    }
+
+
+async def get_user_by_unsubscribe_token(token: str) -> dict | None:
+    """Look up a user by their unsubscribe token."""
+    async with get_conn() as conn:
+        row = await (await conn.execute(
+            "SELECT id, email, name FROM users WHERE unsubscribe_token = %s",
+            (token,),
+        )).fetchone()
+    if not row:
+        return None
+    return {"id": row[0], "email": row[1], "name": row[2]}
