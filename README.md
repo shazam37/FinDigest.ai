@@ -1,6 +1,6 @@
 # FinTech Intelligence Agent
 
-> **A self-improving AI agent that monitors fintech news and delivers personalised daily briefings — so you always know what matters, without having to look.**
+> **A self-improving AI agent that monitors fintech news and delivers personalised daily briefings so you always know what matters, without having to look.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-blue)](https://python.org)
@@ -18,7 +18,7 @@ Every morning at 9 AM, the agent:
 1. Runs **8 parallel Tavily searches** across banks, regulators, neobanks, and fintech verticals
 2. Filters out share prices, conference coverage, and market noise — before the LLM even sees them
 3. Removes stories already sent in the last 7 days using **semantic similarity** (pgvector + sentence embeddings)
-4. Applies your **personal preference profile** — learned from 👍 / 👎 clicks, and active from day one via onboarding
+4. Applies your **personal preference profile** learned from 👍 / 👎 clicks, and active from day one via onboarding
 5. Sends a beautifully formatted email with 6–8 stories, each with a 2–3 sentence executive synopsis
 6. Fans out to **Slack**, **Telegram**, and **WhatsApp** simultaneously
 7. Creates a **Google Calendar event** as an audit trail
@@ -26,7 +26,7 @@ Every morning at 9 AM, the agent:
 
 Between digests: a lighter agent polls every 2 hours for breaking news. Stories scoring **8+/10 urgency** trigger immediate delivery.
 
-Every Friday: a narrative **Week in Review** synthesises the week's themes into analytical arcs — not a list, but a story.
+Every Friday: a narrative **Week in Review** synthesises the week's themes into analytical arcs, not a list, but a story.
 
 Every Monday: the agent **emails itself a health report** with LLM-analysed error patterns and KPIs.
 
@@ -65,7 +65,7 @@ Every Monday: the agent **emails itself a health report** with LLM-analysed erro
 |---|---|
 | API | FastAPI 0.115 |
 | Agent orchestration | LangGraph 0.2 |
-| LLM | Groq — Llama 3.3 70B (free) |
+| LLM | Groq - Llama 3.3 70B (free) |
 | News search | Tavily |
 | Database | PostgreSQL + pgvector |
 | Embeddings | all-MiniLM-L6-v2 (offline, 80MB) |
