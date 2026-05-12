@@ -474,6 +474,45 @@ Contributions are welcome. This is open source — the more people improve it, t
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/overview.png" width="250"/>
+  <img src="screenshots/run_history.png" width="250"/>
+  <img src="screenshots/preferences.png" width="250"/>
+</p>
+
+<p align="center">
+  <b>Dashboard, Run History & Preference Learning</b>
+</p>
+
+<br/>
+
+<p align="center">
+  <img src="screenshots/watchlist.png" width="250"/>
+  <img src="screenshots/research.png" width="250"/>
+  <img src="screenshots/research_brief.png" width="250"/>
+</p>
+
+<p align="center">
+  <b>Watchlists & AI Research Briefs</b>
+</p>
+
+<br/>
+
+<p align="center">
+  <img src="screenshots/q&a.png" width="250"/>
+  <img src="screenshots/gmail.png" width="250"/>
+  <img src="screenshots/slack.png" width="250"/>
+  <img src="screenshots/telegram.png" width="250"/>
+</p>
+
+<p align="center">
+  <b>Q&A Assistant & Multi-Channel Delivery</b>
+</p>
+
+---
+
 ## License
 
 MIT — use freely, modify freely, deploy freely.
