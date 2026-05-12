@@ -505,10 +505,12 @@ Contributions are welcome. This is open source — the more people improve it, t
   <img src="screenshots/gmail.png" width="250"/>
   <img src="screenshots/slack.png" width="250"/>
   <img src="screenshots/telegram.png" width="250"/>
+  <img src="screenshots/whatsapp.png" width="250"/>
+  <img src="screenshots/langsmith.png" width="250"/>
 </p>
 
 <p align="center">
-  <b>Q&A Assistant & Multi-Channel Delivery</b>
+  <b>Q&A Assistant, Multi-Channel Delivery & LangSmith Observability</b>
 </p>
 
 ---
