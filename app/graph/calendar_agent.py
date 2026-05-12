@@ -12,7 +12,7 @@ and audit node. It reads should_abort to determine what status to log.
 import logging
 from datetime import datetime, timezone
 
-from app.state import DigestState
+from app.graph.state import DigestState
 from app.gmail import create_calendar_confirmation
 from app.database import upsert_run
 
@@ -72,21 +72,21 @@ async def calendar_agent(state: DigestState) -> dict:
             logger.warning(f"[calendar_agent] Calendar event failed (non-critical): {e}")
 
     # --- Update in-memory state for dashboard ---
-    from app.state import agent_state
-    agent_state["last_run"] = finished_at.strftime("%Y-%m-%d %H:%M UTC")
-    agent_state["last_status"] = (
+    from app.graph.runtime_state import runtime_state
+    runtime_state["last_run"] = finished_at.strftime("%Y-%m-%d %H:%M UTC")
+    runtime_state["last_status"] = (
         "✅ Sent successfully" if email_sent
         else f"⚠️ {abort_reason[:60]}" if should_abort
         else "❌ Failed"
     )
-    agent_state["stories_found"] = story_count
-    agent_state["run_history"].append({
-        "timestamp": agent_state["last_run"],
+    runtime_state["stories_found"] = story_count
+    runtime_state["run_history"].append({
+        "timestamp": runtime_state["last_run"],
         "stories": story_count,
         "status": status,
         "run_id": run_id,
         "duration_s": round(duration_s, 1) if duration_s else None,
     })
-    agent_state["run_history"] = agent_state["run_history"][-30:]
+    runtime_state["run_history"] = runtime_state["run_history"][-30:]
 
     return {"calendar_logged": calendar_logged}

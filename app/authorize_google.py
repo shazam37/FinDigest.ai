@@ -24,6 +24,7 @@ SCOPES = [
 
 def main():
     creds_path = settings.GOOGLE_CREDENTIALS_PATH
+    print(f"creds path: {creds_path}")
     if not os.path.exists(creds_path):
         print(f"ERROR: Credentials file not found at {creds_path}")
         print("Download OAuth2 credentials from Google Cloud Console and save there.")

@@ -172,10 +172,10 @@ async def _cmd_start(chat_id: str):
 
 
 async def _cmd_status(chat_id: str):
-    from app.state import agent_state
-    last_run = agent_state.get("last_run", "Never")
-    last_status = agent_state.get("last_status", "—")
-    stories = agent_state.get("stories_found", 0)
+    from app.graph.runtime_state import runtime_state
+    last_run = runtime_state.get("last_run", "Never")
+    last_status = runtime_state.get("last_status", "—")
+    stories = runtime_state.get("stories_found", 0)
     send_message(chat_id,
         f"📊 *Agent Status*\n\n"
         f"Last run: {last_run}\n"

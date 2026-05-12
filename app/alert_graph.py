@@ -232,14 +232,12 @@ async def alert_dispatcher(state: AlertState) -> dict:
 
 # ── Graph builder ─────────────────────────────────────────────────────────────
 
-async def build_alert_graph():
-    """Compile the alert graph with its own checkpointer."""
-    global _alert_graph, _alert_checkpointer
-
-    _alert_checkpointer = AsyncPostgresSaver.from_conn_string(settings.DATABASE_URL)
-    await _alert_checkpointer.setup()
+async def build_alert_graph(checkpointer):
+    """Compile the alert graph using the shared Postgres checkpointer."""
+    global _alert_graph
 
     builder = StateGraph(AlertState)
+
     builder.add_node("alert_scanner", alert_scanner)
     builder.add_node("urgency_scorer", urgency_scorer)
     builder.add_node("alert_dispatcher", alert_dispatcher)
@@ -249,8 +247,10 @@ async def build_alert_graph():
     builder.add_edge("urgency_scorer", "alert_dispatcher")
     builder.add_edge("alert_dispatcher", END)
 
-    _alert_graph = builder.compile(checkpointer=_alert_checkpointer)
+    _alert_graph = builder.compile(checkpointer=checkpointer)
+
     logger.info("LangGraph alert graph compiled")
+
     return _alert_graph
 
 

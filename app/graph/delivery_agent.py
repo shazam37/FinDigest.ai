@@ -41,8 +41,8 @@ async def delivery_agent(state: DigestState) -> dict:
     try:
         digest = {"subject": subject, "stories": curated_stories}
         html = build_email_html(digest, run_id=run_id, user_id=user_id)
-        from app.state import agent_state
-        agent_state["last_email_html"] = html
+        from app.graph.runtime_state import runtime_state
+        runtime_state["last_email_html"] = html
     except Exception as e:
         logger.error(f"[delivery_agent] HTML build failed: {e}", exc_info=True)
         return {

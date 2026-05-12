@@ -31,7 +31,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 import pytz
 
 from app.config import settings
-from app.state import agent_state
+from app.graph.runtime_state import runtime_state
 from app.database import (
     init_pool, close_pool,
     create_schema, create_phase2_schema, create_phase3_schema,
@@ -45,6 +45,9 @@ from app.observability import setup_langsmith, run_health_report
 from app.demo import is_demo_mode, get_demo_email_html, DEMO_RUN_HISTORY
 from app.routers import feedback, watchlist, users, chat, research, dashboard
 from app.routers.subscribe import router as subscribe_router
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg import AsyncConnection
+from psycopg.rows import dict_row
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,46 +74,81 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Could not create default user: {e}")
 
-    await build_graph()
-    await build_alert_graph()
-
-    tz = pytz.timezone(settings.USER_TIMEZONE)
-
-    scheduler.add_job(
-        run_fintech_digest,
-        CronTrigger(hour=9, minute=0, timezone=tz),
-        id="daily_digest", replace_existing=True, misfire_grace_time=3600,
-    )
-    scheduler.add_job(
-        run_alert_check,
-        IntervalTrigger(hours=settings.ALERT_POLL_HOURS),
-        id="alert_check", replace_existing=True, misfire_grace_time=300,
-    )
-    scheduler.add_job(
-        run_weekly_synthesis,
-        CronTrigger(day_of_week=settings.SYNTHESIS_DAY_OF_WEEK,
-                    hour=settings.SYNTHESIS_HOUR, minute=0, timezone=tz),
-        id="weekly_synthesis", replace_existing=True, misfire_grace_time=1800,
-    )
-    scheduler.add_job(
-        run_health_report,
-        CronTrigger(day_of_week="mon",
-                    hour=settings.HEALTH_REPORT_HOUR, minute=0, timezone=tz),
-        id="health_report", replace_existing=True, misfire_grace_time=1800,
+    conn = await AsyncConnection.connect(
+        settings.DATABASE_URL,
+        autocommit=True,
+        row_factory=dict_row,
     )
 
-    scheduler.start()
-    demo_note = " [DEMO MODE]" if is_demo_mode() else ""
-    logger.info(
-        f"Startup complete{demo_note} — "
-        f"digest 9AM · alerts every {settings.ALERT_POLL_HOURS}h · "
-        f"synthesis {settings.SYNTHESIS_DAY_OF_WEEK.upper()} · health MON"
-    )
+    try:
 
-    yield
+        checkpointer = AsyncPostgresSaver(conn)
 
-    scheduler.shutdown()
-    await close_pool()
+        await checkpointer.setup()
+
+        # await build_graph(checkpointer)
+        # await build_alert_graph(checkpointer)
+
+        tz = pytz.timezone(settings.USER_TIMEZONE)
+
+        scheduler.add_job(
+            run_fintech_digest,
+            CronTrigger(hour=9, minute=0, timezone=tz),
+            id="daily_digest",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+
+        scheduler.add_job(
+            run_alert_check,
+            IntervalTrigger(hours=settings.ALERT_POLL_HOURS),
+            id="alert_check",
+            replace_existing=True,
+            misfire_grace_time=300,
+        )
+
+        scheduler.add_job(
+            run_weekly_synthesis,
+            CronTrigger(
+                day_of_week=settings.SYNTHESIS_DAY_OF_WEEK,
+                hour=settings.SYNTHESIS_HOUR,
+                minute=0,
+                timezone=tz,
+            ),
+            id="weekly_synthesis",
+            replace_existing=True,
+            misfire_grace_time=1800,
+        )
+
+        scheduler.add_job(
+            run_health_report,
+            CronTrigger(
+                day_of_week="mon",
+                hour=settings.HEALTH_REPORT_HOUR,
+                minute=0,
+                timezone=tz,
+            ),
+            id="health_report",
+            replace_existing=True,
+            misfire_grace_time=1800,
+        )
+
+        scheduler.start()
+
+        demo_note = " [DEMO MODE]" if is_demo_mode() else ""
+
+        logger.info(
+            f"Startup complete{demo_note} — "
+            f"digest 9AM · alerts every {settings.ALERT_POLL_HOURS}h · "
+            f"synthesis {settings.SYNTHESIS_DAY_OF_WEEK.upper()} · health MON"
+        )
+
+        yield
+
+        scheduler.shutdown()
+
+    finally:
+        await close_pool()
 
 
 app = FastAPI(
@@ -229,7 +267,7 @@ async def trigger_health_report(background_tasks: BackgroundTasks):
 async def preview_last_email():
     if is_demo_mode():
         return HTMLResponse(get_demo_email_html())
-    html = agent_state.get("last_email_html")
+    html = runtime_state.get("last_email_html")
     if not html:
         raise HTTPException(status_code=404, detail="No digest yet. Hit /run-now first.")
     return html

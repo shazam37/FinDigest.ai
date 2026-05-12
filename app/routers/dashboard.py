@@ -23,7 +23,7 @@ from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse
 
 from app.config import settings
-from app.state import agent_state
+from app.graph.runtime_state import runtime_state
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -158,7 +158,7 @@ def _shell(title: str, content: str, active: str = "") -> str:
   <div class="layout">
     <nav class="sidebar">
       <div class="sidebar-logo">
-        Fintech<span>Intelligence</span>
+        FinDigest
       </div>
       {nav_html}
     </nav>
@@ -177,9 +177,9 @@ async def overview():
     from app.database import fetch_run_history
     runs = await fetch_run_history(limit=30)
 
-    last_status = agent_state.get("last_status", "—")
-    stories = agent_state.get("stories_found", 0)
-    last_run = agent_state.get("last_run", "Never")
+    last_status = runtime_state.get("last_status", "—")
+    stories = runtime_state.get("stories_found", 0)
+    last_run = runtime_state.get("last_run", "Never")
 
     total = len(runs)
     successes = sum(1 for r in runs if r.get("status") == "success")
@@ -258,14 +258,25 @@ async def overview():
 
 @router.get("/watchlist", response_class=HTMLResponse)
 async def watchlist_page():
-    from app.database import fetch_watchlist, fetch_sentiment_window, get_or_create_default_user
+    from app.database import (
+        fetch_watchlist,
+        fetch_sentiment_window,
+        get_or_create_default_user,
+    )
+
     user_id = await get_or_create_default_user()
     entities = await fetch_watchlist(user_id)
 
     entity_rows = ""
+
     for e in entities:
         scores = await fetch_sentiment_window(e["entity"], days=7)
-        avg = round(sum(s["score"] for s in scores) / len(scores), 2) if scores else None
+
+        avg = (
+            round(sum(s["score"] for s in scores) / len(scores), 2)
+            if scores else None
+        )
+
         if avg is None:
             sent_badge = '<span class="badge badge-blue">No data</span>'
         elif avg >= 0.2:
@@ -275,7 +286,8 @@ async def watchlist_page():
         else:
             sent_badge = f'<span class="badge badge-amber">{avg:.2f}</span>'
 
-        entity_rows += f"""<tr>
+        entity_rows += f"""
+        <tr>
           <td><strong>{e['entity']}</strong></td>
           <td><span class="badge badge-gold">{e['entity_type']}</span></td>
           <td>{sent_badge}</td>
@@ -284,11 +296,13 @@ async def watchlist_page():
             <button class="btn btn-red text-xs"
               hx-delete="/watchlist/{e['id']}?user_id={user_id}"
               hx-confirm="Remove {e['entity']} from watchlist?"
-              hx-target="closest tr" hx-swap="outerHTML">
+              hx-target="closest tr"
+              hx-swap="outerHTML">
               Remove
             </button>
           </td>
-        </tr>"""
+        </tr>
+        """
 
     content = f"""
     <div class="flex items-center justify-between mb2">
@@ -300,36 +314,109 @@ async def watchlist_page():
 
     <div class="card mb2">
       <div class="card-title">Add Entity</div>
+
       <div class="flex gap1">
-        <input id="entity-input" class="input" placeholder="e.g. HSBC, Stripe, FCA, BNPL..."
-          style="max-width:320px;">
-        <select id="type-select" class="input" style="max-width:140px;">
+        <input
+          id="entity-input"
+          class="input"
+          placeholder="e.g. HSBC, Stripe, FCA, BNPL..."
+          style="max-width:320px;"
+        >
+
+        <select
+          id="type-select"
+          class="input"
+          style="max-width:140px;"
+        >
           <option value="company">Company</option>
           <option value="regulator">Regulator</option>
           <option value="topic">Topic</option>
           <option value="person">Person</option>
         </select>
-        <button class="btn btn-primary"
-          hx-post="/watchlist?user_id={user_id}"
-          hx-include="#entity-input,#type-select"
-          hx-vals='js:{{"entity": document.getElementById("entity-input").value, "entity_type": document.getElementById("type-select").value}}'
-          hx-on::after-request="document.getElementById('entity-input').value=''; window.location.reload()">
+
+        <button
+          class="btn btn-primary"
+          onclick="addWatchlistEntity()"
+        >
           + Add
         </button>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-title">Watched Entities ({len(entities)})</div>
+      <div class="card-title">
+        Watched Entities ({len(entities)})
+      </div>
+
       <table>
-        <thead><tr><th>Entity</th><th>Type</th><th>7-Day Sentiment</th><th>Coverage</th><th></th></tr></thead>
-        <tbody>{entity_rows if entity_rows else '<tr><td colspan="5" class="text-muted">No entities watched yet</td></tr>'}</tbody>
+        <thead>
+          <tr>
+            <th>Entity</th>
+            <th>Type</th>
+            <th>7-Day Sentiment</th>
+            <th>Coverage</th>
+            <th></th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {entity_rows if entity_rows else '<tr><td colspan="5" class="text-muted">No entities watched yet</td></tr>'}
+        </tbody>
       </table>
+
       <p class="text-xs text-muted mt2">
-        Sentiment updates after each digest run. Scale: -1.0 (negative) → +1.0 (positive).
-        Alerts fire when 48h average shifts ±{settings.SENTIMENT_ALERT_DELTA} vs {settings.SENTIMENT_WINDOW_DAYS}-day baseline.
+        Sentiment updates after each digest run.
+        Scale: -1.0 (negative) → +1.0 (positive).
       </p>
-    </div>"""
+    </div>
+
+    <script>
+    async function addWatchlistEntity() {{
+        const entity = document
+            .getElementById("entity-input")
+            .value
+            .trim();
+
+        const entity_type = document
+            .getElementById("type-select")
+            .value;
+
+        if (!entity) {{
+            alert("Please enter an entity");
+            return;
+        }}
+
+        try {{
+            const resp = await fetch(
+                "/watchlist?user_id={user_id}",
+                {{
+                    method: "POST",
+                    headers: {{
+                        "Content-Type": "application/json"
+                    }},
+                    body: JSON.stringify({{
+                        entity,
+                        entity_type
+                    }})
+                }}
+            );
+
+            if (!resp.ok) {{
+                const err = await resp.text();
+                throw new Error(err);
+            }}
+
+            document.getElementById("entity-input").value = "";
+
+            window.location.reload();
+
+        }} catch(err) {{
+            console.error(err);
+            alert("Failed to add entity");
+        }}
+    }}
+    </script>
+    """
 
     return HTMLResponse(_shell("Watchlist", content, "watchlist"))
 
@@ -438,65 +525,167 @@ async def preferences_page():
 @router.get("/research", response_class=HTMLResponse)
 async def research_page():
     from app.database import get_or_create_default_user
+
     user_id = await get_or_create_default_user()
 
-    async with __import__('app.database', fromlist=['get_conn']).get_conn() as conn:
-        rows = await (await conn.execute(
-            "SELECT brief_id, topic, status, story_count, created_at FROM research_briefs "
-            "WHERE user_id = %s ORDER BY created_at DESC LIMIT 20",
-            (user_id,),
-        )).fetchall()
+    async with __import__(
+        "app.database",
+        fromlist=["get_conn"]
+    ).get_conn() as conn:
+
+        rows = await (
+            await conn.execute(
+                """
+                SELECT
+                    brief_id,
+                    topic,
+                    status,
+                    story_count,
+                    created_at
+                FROM research_briefs
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT 20
+                """,
+                (user_id,),
+            )
+        ).fetchall()
 
     brief_rows = ""
+
     for r in rows:
-        ts = r[4].strftime("%-d %b %H:%M") if isinstance(r[4], datetime) else str(r[4])[:16]
+        ts = (
+            r[4].strftime("%-d %b %H:%M")
+            if isinstance(r[4], datetime)
+            else str(r[4])[:16]
+        )
+
         st = r[2]
-        badge = (f'<span class="badge badge-green">{st}</span>' if st == "complete"
-                 else f'<span class="badge badge-amber">{st}</span>' if st == "pending"
-                 else f'<span class="badge badge-red">{st[:25]}</span>')
-        pdf_link = (f'<a href="/research/{r[0]}/pdf" class="btn btn-outline text-xs" target="_blank">PDF</a>'
-                    if st == "complete" else "—")
-        brief_rows += f"""<tr>
+
+        badge = (
+            f'<span class="badge badge-green">{st}</span>'
+            if st == "complete"
+            else f'<span class="badge badge-amber">{st}</span>'
+            if st == "pending"
+            else f'<span class="badge badge-red">{st[:25]}</span>'
+        )
+
+        pdf_link = (
+            f'<a href="/research/{r[0]}/pdf" class="btn btn-outline text-xs" target="_blank">PDF</a>'
+            if st == "complete"
+            else "—"
+        )
+
+        brief_rows += f"""
+        <tr>
           <td class="text-mono text-xs">{r[0]}</td>
           <td><strong>{r[1]}</strong></td>
           <td>{badge}</td>
           <td>{r[3]}</td>
           <td class="text-mono text-xs text-muted">{ts}</td>
           <td>{pdf_link}</td>
-        </tr>"""
+        </tr>
+        """
 
     content = f"""
     <h1 class="page-title">Research</h1>
-    <p class="page-sub">Deep-dive briefs on companies, regulators, and topics</p>
+
+    <p class="page-sub">
+      Deep-dive briefs on companies, regulators, and topics
+    </p>
 
     <div class="card mb2">
       <div class="card-title">New Research Brief</div>
+
       <p class="text-sm text-muted mb2">
-        Runs {settings.RESEARCH_MAX_SEARCHES} targeted searches across 30 days of news,
-        synthesises into a structured brief with executive summary, key developments,
-        strategic implications, and PDF download.
+        Runs {settings.RESEARCH_MAX_SEARCHES} targeted searches
+        across 30 days of news.
       </p>
+
       <div class="flex gap1">
-        <input id="research-topic" class="input"
-          placeholder="e.g. Klarna, HSBC open banking, BNPL regulation..."
-          style="max-width:400px;">
-        <button class="btn btn-primary"
-          hx-post="/research?user_id={user_id}"
-          hx-vals='js:{{"topic": document.getElementById("research-topic").value, "user_id": {user_id}}}'
-          hx-on::after-request="setTimeout(()=>window.location.reload(), 2000)">
+        <input
+          id="research-topic"
+          class="input"
+          placeholder="e.g. Klarna, HSBC open banking..."
+          style="max-width:400px;"
+        >
+
+        <button
+          class="btn btn-primary"
+          onclick="generateResearch()"
+        >
           Generate Brief
-          <span class="htmx-indicator">…</span>
         </button>
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Past Briefs</div>
+
       <table>
-        <thead><tr><th>ID</th><th>Topic</th><th>Status</th><th>Sources</th><th>Generated</th><th>PDF</th></tr></thead>
-        <tbody>{brief_rows if brief_rows else '<tr><td colspan="6" class="text-muted">No briefs yet</td></tr>'}</tbody>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Topic</th>
+            <th>Status</th>
+            <th>Sources</th>
+            <th>Generated</th>
+            <th>PDF</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {brief_rows if brief_rows else '<tr><td colspan="6" class="text-muted">No briefs yet</td></tr>'}
+        </tbody>
       </table>
-    </div>"""
+    </div>
+
+    <script>
+    async function generateResearch() {{
+
+        const topic = document
+            .getElementById("research-topic")
+            .value
+            .trim();
+
+        if (!topic) {{
+            alert("Please enter a topic");
+            return;
+        }}
+
+        try {{
+
+            const resp = await fetch(
+                "/research?user_id={user_id}",
+                {{
+                    method: "POST",
+                    headers: {{
+                        "Content-Type": "application/json"
+                    }},
+                    body: JSON.stringify({{
+                        topic
+                    }})
+                }}
+            );
+
+            if (!resp.ok) {{
+                const err = await resp.text();
+                throw new Error(err);
+            }}
+
+            document.getElementById("research-topic").value = "";
+
+            setTimeout(() => {{
+                window.location.reload();
+            }}, 2000);
+
+        }} catch(err) {{
+            console.error(err);
+            alert("Failed to generate research brief");
+        }}
+    }}
+    </script>
+    """
 
     return HTMLResponse(_shell("Research", content, "research"))
 

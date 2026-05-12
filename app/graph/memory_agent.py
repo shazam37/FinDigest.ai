@@ -17,7 +17,7 @@ The digest still sends — just without deduplication for this run.
 """
 
 import logging
-from app.state import DigestState
+from app.graph.state import DigestState
 from app.memory import filter_seen_stories
 
 logger = logging.getLogger(__name__)

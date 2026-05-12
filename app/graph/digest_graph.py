@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg import AsyncConnection
 
 from app.graph.state import DigestState
 from app.graph.news_agent import news_agent
@@ -20,18 +21,21 @@ from app.graph.builder_agent import builder_agent
 from app.graph.delivery_agent import delivery_agent
 from app.graph.calendar_agent import calendar_agent
 from app.config import settings
+from app.graph.runtime_state import runtime_state
+from psycopg.rows import dict_row
 
 logger = logging.getLogger(__name__)
 
-_graph = None
-_checkpointer = None
+# _graph = None
 
+async def build_graph(checkpointer):
+    # global _graph
 
-async def build_graph():
-    global _graph, _checkpointer
+    # async with AsyncPostgresSaver.from_conn_string(
+    #     settings.DATABASE_URL
+    # ) as checkpointer:
 
-    _checkpointer = AsyncPostgresSaver.from_conn_string(settings.DATABASE_URL)
-    await _checkpointer.setup()
+    # await checkpointer.setup()
 
     graph_builder = StateGraph(DigestState)
 
@@ -50,15 +54,17 @@ async def build_graph():
     graph_builder.add_edge("delivery_agent", "calendar_agent")
     graph_builder.add_edge("calendar_agent", END)
 
-    _graph = graph_builder.compile(checkpointer=_checkpointer)
+    graph = graph_builder.compile(checkpointer=checkpointer)
+
     logger.info("LangGraph digest graph compiled with PostgresSaver checkpointer")
-    return _graph
+
+    return graph
 
 
-def get_graph():
-    if _graph is None:
-        raise RuntimeError("Graph not built. Call build_graph() at startup.")
-    return _graph
+# def get_graph():
+#     if _graph is None:
+#         raise RuntimeError("Graph not built. Call build_graph() at startup.")
+#     return _graph
 
 
 async def run_fintech_digest(user_id: int | None = None):
@@ -101,8 +107,27 @@ async def run_fintech_digest(user_id: int | None = None):
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        graph = get_graph()
-        final_state = await graph.ainvoke(initial_state, config=config)
+        # graph = get_graph()
+        conn = await AsyncConnection.connect(
+            settings.DATABASE_URL,
+            autocommit=True,
+            row_factory=dict_row,
+        )
+
+        checkpointer = AsyncPostgresSaver(conn)
+
+        graph = await build_graph(checkpointer)
+
+        final_state = await graph.ainvoke(
+            initial_state,
+            config=config,
+        )
+        # final_state = await graph.ainvoke(initial_state, config=config)
+
+        runtime_state["last_status"] = "success"
+        runtime_state["stories_found"] = len(final_state.get("curated_stories", []))
+        runtime_state["last_run"] = datetime.now(timezone.utc).isoformat()
+        runtime_state["last_email_html"] = final_state.get("email_html")
 
         email_sent = final_state.get("email_sent", False)
         errors = final_state.get("errors", [])
@@ -116,6 +141,8 @@ async def run_fintech_digest(user_id: int | None = None):
             logger.warning(f"Run {run_id} non-fatal errors: {errors}")
 
     except Exception as e:
+        runtime_state["last_status"] = f"crashed: {str(e)[:120]}"
+        runtime_state["last_run"] = datetime.now(timezone.utc).isoformat()
         logger.exception(f"=== Digest run {run_id} CRASHED: {e} ===")
         try:
             from app.database import upsert_run
