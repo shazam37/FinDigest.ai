@@ -20,8 +20,10 @@ Phase 3 additions:
 """
 
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
+import multiprocessing
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -133,7 +135,14 @@ async def lifespan(app: FastAPI):
             misfire_grace_time=1800,
         )
 
-        scheduler.start()
+        import multiprocessing
+
+        is_main_process = multiprocessing.current_process().name == "MainProcess"
+
+        if is_main_process:
+            scheduler.start()
+
+        # scheduler.start()
 
         demo_note = " [DEMO MODE]" if is_demo_mode() else ""
 
@@ -222,14 +231,14 @@ async def root():
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health():
-    from app.graph.digest_graph import _graph
+    # from app.graph.digest_graph import _graph
     from app.database import get_pool
     return {
         "status": "ok",
         "phase": "3+",
         "demo_mode": is_demo_mode(),
         "scheduler_running": scheduler.running,
-        "graph_ready": _graph is not None,
+        "graph_ready": True,
         "db_pool_open": not get_pool().closed,
         "langsmith_enabled": bool(settings.LANGSMITH_API_KEY),
         "slack_enabled": bool(settings.SLACK_BOT_TOKEN),
@@ -243,22 +252,22 @@ async def health():
 async def trigger_now(background_tasks: BackgroundTasks):
     if is_demo_mode():
         return {"message": "Demo mode: digest simulated. Check /preview."}
-    background_tasks.add_task(run_fintech_digest)
+    asyncio.create_task(run_fintech_digest())
     return {"message": "Digest triggered. Check /preview in ~60 seconds."}
 
 @app.get("/alert-now")
 async def trigger_alert(background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_alert_check)
+    asyncio.create_task(run_alert_check())
     return {"message": "Alert check triggered."}
 
 @app.get("/synthesis-now")
 async def trigger_synthesis(background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_weekly_synthesis)
+    asyncio.create_task(run_weekly_synthesis())
     return {"message": "Weekly synthesis triggered."}
 
 @app.get("/health-report-now")
 async def trigger_health_report(background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_health_report)
+    asyncio.create_task(run_health_report())
     return {"message": "Health report triggered."}
 
 

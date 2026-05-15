@@ -34,4 +34,4 @@ def builder_agent(state: DigestState) -> dict:
         }
 
     logger.info(f"[builder_agent] {len(curated)} stories validated — passing to delivery")
-    return {"email_html": "__pending__"}   # Actual HTML built in delivery_agent
+    return {}   # Actual HTML built in delivery_agent

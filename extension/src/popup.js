@@ -317,7 +317,7 @@ document.getElementById("test-conn-btn").addEventListener("click", async () => {
   result.style.color = "#94a3b8";
   try {
     const data = await api("/health");
-    result.textContent = `✅ Connected — Phase ${data.phase}`;
+    result.textContent = `✅ Connected`;
     result.style.color = "#4ade80";
   } catch (e) {
     result.textContent = `❌ ${e.message}`;

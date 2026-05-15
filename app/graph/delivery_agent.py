@@ -9,6 +9,7 @@ Responsibilities:
 """
 
 import logging
+import asyncio
 from app.graph.state import DigestState
 from app.gmail import send_digest_email
 from app.memory import save_stories_to_memory
@@ -40,9 +41,14 @@ async def delivery_agent(state: DigestState) -> dict:
     # Build HTML
     try:
         digest = {"subject": subject, "stories": curated_stories}
-        html = build_email_html(digest, run_id=run_id, user_id=user_id)
+        html = await asyncio.to_thread(
+                build_email_html,
+                digest,
+                run_id=run_id,
+                user_id=user_id
+            )
         from app.graph.runtime_state import runtime_state
-        runtime_state["last_email_html"] = html
+        
     except Exception as e:
         logger.error(f"[delivery_agent] HTML build failed: {e}", exc_info=True)
         return {
@@ -54,7 +60,11 @@ async def delivery_agent(state: DigestState) -> dict:
 
     # Send primary email
     try:
-        sent = send_digest_email(subject, html)
+        sent = await asyncio.to_thread(
+                send_digest_email,
+                subject,
+                html
+            )
     except Exception as e:
         logger.error(f"[delivery_agent] Gmail send exception: {e}", exc_info=True)
         return {
@@ -68,26 +78,34 @@ async def delivery_agent(state: DigestState) -> dict:
             "errors": ["delivery_agent: Gmail API returned failure"],
         }
 
+    runtime_state["last_email_html"] = html
+
     logger.info(f"[delivery_agent] Email sent: {subject}")
 
     # Phase 3: Multi-channel fan-out (non-blocking)
     try:
         from app.delivery.channels import fan_out_digest
-        channel_results = await fan_out_digest(subject, curated_stories)
+        channel_results = await asyncio.to_thread(fan_out_digest, subject, curated_stories)
         logger.info(f"[delivery_agent] Channel fan-out: {channel_results}")
     except Exception as e:
         logger.warning(f"[delivery_agent] Channel fan-out failed (non-critical): {e}")
 
     # Save to story memory
     try:
-        await save_stories_to_memory(curated_stories)
+        await asyncio.to_thread(
+            save_stories_to_memory,
+            curated_stories
+        )
     except Exception as e:
         logger.warning(f"[delivery_agent] Memory save failed (non-critical): {e}")
 
     # Phase 2: Sentiment tracking
     try:
         from app.watchlist import score_and_track_sentiment
-        await score_and_track_sentiment(curated_stories, user_id)
+        await asyncio.to_thread(
+            score_and_track_sentiment,
+            curated_stories, 
+            user_id)
     except Exception as e:
         logger.warning(f"[delivery_agent] Sentiment tracking failed (non-critical): {e}")
 

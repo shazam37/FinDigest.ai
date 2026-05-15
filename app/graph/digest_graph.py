@@ -102,6 +102,7 @@ async def run_fintech_digest(user_id: int | None = None):
         "errors": [],
         "should_abort": False,
         "abort_reason": "",
+        
     }
 
     config = {"configurable": {"thread_id": run_id}}
